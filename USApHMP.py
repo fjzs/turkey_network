@@ -13,7 +13,7 @@ class USApHMP:
         assert 1 <= number_hubs
         self.cities_data = cities_data
         
-        # Define set and parameters
+        # Define set (set_) and parameters (par_)
         self.set_cities = self.__get_set_cities__(max_nodes)    # N
         self.par_flow = self.__get_flow__()                     # Wij
         self.par_supply = self.__get_flow_supply__()            # Oi
@@ -27,22 +27,27 @@ class USApHMP:
         # Create optimization model
         self.model = gp.Model('USApHMP')
         
-        # Create variables
+        # Create variables (var_)
         self.var_Z = self.__add_var_Z__()
         self.var_Y = self.__add_var_Y__()
 
         # Create constraints
-        self._add_constraint_locate_hubs()
-        self._add_constraint_assign_hub_to_node()
-        self._add_constraint_hub_implication()
-        self._add_constraint_multicommodity_flow_equation()
+        self.__add_constraint_locate_hubs()
+        self.__add_constraint_assign_hub_to_node()
+        self.__add_constraint_hub_implication()
+        self.__add_constraint_multicommodity_flow_equation()
+
+        # Set objective function
+        self.__set_objective_function__()
 
         self.model.update()
 
         print(f"\n\n\n\n\n\n\nConstraints:")
         for con in self.model.getConstrs():
             print(f"\n{con}:\n{self.model.getRow(con)} {con.Sense} {con.RHS}")
-        
+
+    def solve(self):
+        self.model.optimize()    
 
 
     def __get_set_cities__(self, max_nodes: int) -> list:
@@ -101,7 +106,7 @@ class USApHMP:
         N = self.set_cities
         return self.model.addVars(N, N, N, lb=0, vtype = GRB.CONTINUOUS, name="Y")
     
-    def _add_constraint_locate_hubs(self):
+    def __add_constraint_locate_hubs(self):
         """
         We need to locate p hubs
         """
@@ -110,7 +115,7 @@ class USApHMP:
             gp.quicksum(self.var_Z[i, i] for i in N) == self.par_number_hubs,
             name = "locate p hubs")
 
-    def _add_constraint_assign_hub_to_node(self):
+    def __add_constraint_assign_hub_to_node(self):
         """
         Every node has to be assigned to a single hub
         """
@@ -119,7 +124,7 @@ class USApHMP:
             (self.var_Z.sum(i, "*") == 1 for i in N), 
             name = "node to hub assignment")
 
-    def _add_constraint_hub_implication(self):
+    def __add_constraint_hub_implication(self):
         """
         Assigning a node to a hub implies the hub was located
         """
@@ -128,7 +133,7 @@ class USApHMP:
             (self.var_Z[i,k] <= self.var_Z[k,k] for i in N for k in N if i != k), 
             name = "node to hub implies hub")
 
-    def _add_constraint_multicommodity_flow_equation(self):
+    def __add_constraint_multicommodity_flow_equation(self):
         """
         Flow conservation from each node at allocated hubs
         """
@@ -143,20 +148,26 @@ class USApHMP:
                     ),
                     name = f"flow_conservation[{i},{k}]"
                 )
-                
-
-        
-        
-        
-
-            
-
-
-
+    
+    def __set_objective_function__(self):
+        N = self.set_cities
+        self.model.setObjective(
+            # collection and transfer costs
+            gp.quicksum(
+                self.par_distance[i,k] * self.var_Z[i,k] * (self.par_unit_cost_collection *self.par_supply[i] + 
+                self.par_unit_cost_transfer * self.par_demand[i]) for i in N for k in N
+            ) + 
+            # distribution costs
+            gp.quicksum(
+                self.par_unit_cost_distribution * self.par_distance[k,l] * self.var_Y[i,k,l] for i in N for k in N for l in N
+            ),
+            sense=GRB.MINIMIZE
+        )
 
 
 
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApHMP(cities_data, max_nodes=4, number_hubs=2)
+    problem = USApHMP(cities_data, max_nodes=3, number_hubs=1)
+    problem.solve()
