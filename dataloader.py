@@ -5,7 +5,7 @@ from typing import Dict
 DATA_FILE = "./data/data.xlsx"
 
 
-def get_cities(data_file:str = DATA_FILE):
+def __get_cities(data_file:str = DATA_FILE):
     """Returns an initial dictionary of cities with information pertaining
     only to the city
 
@@ -31,7 +31,7 @@ def get_cities(data_file:str = DATA_FILE):
     return cities
 
 
-def fill_city_to_city_info(cities: Dict[int, City], sheet_name: str, data_file:str = DATA_FILE):
+def __fill_city_to_city_info(cities: Dict[int, City], sheet_name: str, data_file:str = DATA_FILE):
     """Fills one parameter related to a city-to-city relationship
 
     Args:
@@ -62,15 +62,21 @@ def fill_city_to_city_info(cities: Dict[int, City], sheet_name: str, data_file:s
                     cities[origin_id].fixed_link_cost_to_other_cities[dest_id] = value
                 else:
                     raise ValueError(f"I dont know this sheet name: {sheet_name}")
-
         
 
 
 def load_data():
-    cities = get_cities()
-    fill_city_to_city_info(cities, sheet_name="distance_km")
-    print(cities[1])
-    
+    """Loads the data for this problem
+
+    Returns:
+        cities (Dict[int, City]): dictionary that maps every city id to its object
+    """
+    cities = __get_cities()
+    __fill_city_to_city_info(cities, sheet_name = "distance_km")
+    __fill_city_to_city_info(cities, sheet_name = "travel_time_min")
+    __fill_city_to_city_info(cities, sheet_name = "flow")
+    __fill_city_to_city_info(cities, sheet_name = "fixed_link_cost")
+    return cities
 
 
 if __name__ == "__main__":
