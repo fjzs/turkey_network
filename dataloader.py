@@ -65,7 +65,7 @@ def __fill_city_to_city_info(cities: Dict[int, City], sheet_name: str, data_file
         
 
 
-def load_data():
+def load_data() -> Dict[int, City]:
     """Loads the data for this problem
 
     Returns:
