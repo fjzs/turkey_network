@@ -2,6 +2,8 @@ from typing import Dict
 from class_city import City
 import gurobipy as gp
 from gurobipy import GRB
+import plotter
+import utils
 
 
 class USApHMP:
@@ -64,19 +66,51 @@ class USApHMP:
         #     print(f"\n{con}:\n{self.model.getRow(con)} {con.Sense} {con.RHS}")
 
     def solve(self):
-        print("\n\n")
+        print("\n\n\nSTARTING SOLVER\n")
         self.model.optimize()    
 
-    def save_solution(self):
+    def __parse_solution_variable__(self, var_values: dict) -> dict:
+        """Parses the keys to be inmutable
 
+        Args:
+            var_values (dict): tuple -> value
+
+        Returns:
+            output (dict): 
+        """
+        return { str(k): v for (k,v) in var_values.items() if v != 0}  
+
+
+    def save_solution(self):
         solution = dict()
         solution['model'] = 'usaphmp'
-        solution['variables'] = {}
         
         # Append variables
-        solution['variables']['Z'] = self.model.getAttr('X', self.var_Z)
-        solution['variables']['Y'] = self.model.getAttr('X', self.var_Y)
+        solution['variables'] = {}
+        solution['variables']['Z'] = self.__parse_solution_variable__(self.model.getAttr('X', self.var_Z))
+        solution['variables']['Y'] = self.__parse_solution_variable__(self.model.getAttr('X', self.var_Y))
+        utils.save_solution(solution)
+
+    def plot_solution(self):
+        solution = utils.load_solution("usaphmp_2023_12_26_17_13_28.json")
         
+        # Input for plotting
+        solution_hubs_ids = set()
+        solution_city_hub_connection = set()
+
+        # Regarding variable Z
+        Z = solution["variables"]["Z"]
+        for (i,j), _ in Z.items():
+            if i == j:
+                solution_hubs_ids.add(j)
+            else:
+                solution_city_hub_connection.add((i,j))
+        
+        # Now we can plot
+        plotter.plot_map(cities = self.cities_data,
+                         solution_hubs_ids = solution_hubs_ids,
+                         solution_city_hub_connection = solution_city_hub_connection
+                         )
 
 
 
@@ -200,6 +234,8 @@ class USApHMP:
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApHMP(cities_data, max_nodes=10, number_hubs=2)
-    problem.solve()
-    problem.save_solution()
+    problem = USApHMP(cities_data, max_nodes=6, number_hubs=2)
+    #problem.solve()
+    #problem.save_solution()
+    problem.plot_solution()
+
