@@ -3,6 +3,7 @@ from class_city import City
 import gurobipy as gp
 from gurobipy import GRB
 
+
 class USApHMP:
     """This class implements the uncapacitated, single allocation p-hub median problem from
     ANDREAS T. ERNST and MOHAN KRISHNAMOORTHY (1996)
@@ -17,12 +18,12 @@ class USApHMP:
         self.set_cities = self.__get_set_cities__(max_nodes)    # N
 
         # To debug
-        for i, city_i in self.cities_data.items():
-            for j in city_i.flow_goods_to_other_cities:
-                if i != j:
-                    city_i.flow_goods_to_other_cities[j] = i*10
-                else:
-                    city_i.flow_goods_to_other_cities[j] = 0
+        # for i, city_i in self.cities_data.items():
+        #     for j in city_i.flow_goods_to_other_cities:
+        #         if i != j:
+        #             city_i.flow_goods_to_other_cities[j] = i*10
+        #         else:
+        #             city_i.flow_goods_to_other_cities[j] = 0
 
 
         self.par_flow = self.__get_flow__()                     # Wij
@@ -66,15 +67,18 @@ class USApHMP:
         print("\n\n")
         self.model.optimize()    
 
-    def get_solution(self):
+    def save_solution(self):
 
-        for index, val in self.model.getAttr('X', self.var_Z).items():
-            if val > 0:
-                print(f"Z {index}: {val}")
+        solution = dict()
+        solution['model'] = 'usaphmp'
+        solution['variables'] = {}
+        
+        # Append variables
+        solution['variables']['Z'] = self.model.getAttr('X', self.var_Z)
+        solution['variables']['Y'] = self.model.getAttr('X', self.var_Y)
+        
 
-        for index, val in self.model.getAttr('X', self.var_Y).items():
-            if val > 0:
-                print(f"Y {index}: {val}")
+
 
 
     def __get_set_cities__(self, max_nodes: int) -> list:
@@ -86,7 +90,7 @@ class USApHMP:
             city_i = self.cities_data[i]
             for j, value_ij in city_i.flow_goods_to_other_cities.items():
                 if j in self.set_cities:
-                    flow[(i, j)] = int(value_ij)
+                    flow[(i, j)] = value_ij
         return flow
     
     def __get_flow_supply__(self) -> dict:
@@ -116,7 +120,7 @@ class USApHMP:
             city_i = self.cities_data[i]
             for j, value_ij in city_i.distance_km_to_other_cities.items():
                 if j in self.set_cities:
-                    distance[(i, j)] = int(value_ij)
+                    distance[(i, j)] = value_ij
         return distance
 
     def __add_var_Z__(self):
@@ -196,6 +200,6 @@ class USApHMP:
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApHMP(cities_data, max_nodes=81, number_hubs=5)
+    problem = USApHMP(cities_data, max_nodes=10, number_hubs=2)
     problem.solve()
-    problem.get_solution()
+    problem.save_solution()

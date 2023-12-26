@@ -53,11 +53,11 @@ def __fill_city_to_city_info(cities: Dict[int, City], sheet_name: str, data_file
         for dest_id, value in info_to_other_city.items():
             if dest_id != "Name":
                 if sheet_name == "distance_km":
-                    cities[origin_id].distance_km_to_other_cities[dest_id] = value
+                    cities[origin_id].distance_km_to_other_cities[dest_id] = int(value)
                 elif sheet_name == "travel_time_min":
-                    cities[origin_id].travel_time_min_to_other_cities[dest_id] = value
+                    cities[origin_id].travel_time_min_to_other_cities[dest_id] = int(value)
                 elif sheet_name == "flow":
-                    cities[origin_id].flow_goods_to_other_cities[dest_id] = value
+                    cities[origin_id].flow_goods_to_other_cities[dest_id] = int(value)
                 elif sheet_name == "fixed_link_cost":
                     cities[origin_id].fixed_link_cost_to_other_cities[dest_id] = value
                 else:
