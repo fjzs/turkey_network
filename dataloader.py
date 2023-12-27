@@ -24,7 +24,7 @@ def __get_cities(data_file:str = DATA_FILE):
         name = row[1]["City"]
         latitude = row[1]["Latitude"]
         longitude = row[1]["Longitude"]
-        fixed_hub_cost = row[1]["Fixed Hub Cost"]
+        fixed_hub_cost = round(row[1]["Fixed Hub Cost"],2)
         city = City(name, id, fixed_hub_cost, latitude, longitude, dict(), dict(), dict(), dict())
         cities[id] = city
     

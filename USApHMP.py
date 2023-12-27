@@ -18,16 +18,6 @@ class USApHMP:
         
         # Define set (set_) and parameters (par_)
         self.set_cities = self.__get_set_cities__(max_nodes)    # N
-
-        # To debug
-        # for i, city_i in self.cities_data.items():
-        #     for j in city_i.flow_goods_to_other_cities:
-        #         if i != j:
-        #             city_i.flow_goods_to_other_cities[j] = i*10
-        #         else:
-        #             city_i.flow_goods_to_other_cities[j] = 0
-
-
         self.par_flow = self.__get_flow__()                     # Wij
         self.par_supply = self.__get_flow_supply__()            # Oi
         self.par_demand = self.__get_flow_demand__()            # Di
@@ -91,8 +81,8 @@ class USApHMP:
         solution['variables']['Y'] = self.__parse_solution_variable__(self.model.getAttr('X', self.var_Y))
         utils.save_solution(solution)
 
-    def plot_solution(self):
-        solution = utils.load_solution("usaphmp_2023_12_26_17_13_28.json")
+    def plot_solution(self, filename):
+        solution = utils.load_solution(filename)
         
         # Input for plotting
         solution_hubs_ids = set()
@@ -103,8 +93,7 @@ class USApHMP:
         for (i,j), _ in Z.items():
             if i == j:
                 solution_hubs_ids.add(j)
-            else:
-                solution_city_hub_connection.add((i,j))
+            solution_city_hub_connection.add((i,j))
         
         # Now we can plot
         plotter.plot_map(cities = self.cities_data,
@@ -234,8 +223,8 @@ class USApHMP:
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApHMP(cities_data, max_nodes=6, number_hubs=2)
+    problem = USApHMP(cities_data, max_nodes=50, number_hubs=10)
     #problem.solve()
     #problem.save_solution()
-    problem.plot_solution()
+    problem.plot_solution("usaphmp_2023_12_27_05_07_07.json")
 

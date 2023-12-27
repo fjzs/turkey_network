@@ -31,9 +31,15 @@ def plot_map(cities: Dict[int, City], solution_hubs_ids: set(), solution_city_hu
     plt.ylabel("Latitude")
     plt.xlabel("Longitude")
 
-    # To plot cities
-    for id, city in cities.items():
-        plt.annotate(str(id), (city.longitude-0.1, city.latitude-0.1), color="red", size=10)
+    # Plot cities id, but if a solution is given, only plot those in the solution
+    cities_to_plot = {id for id in cities.keys()}
+    if solution_city_hub_connection is not None:
+        cities_to_plot = set()
+        for (i,j) in solution_city_hub_connection:
+            cities_to_plot.update({i, j})
+    for i in cities_to_plot:
+        city = cities[i]
+        plt.annotate(str(i), (city.longitude-0.1, city.latitude-0.1), color="red", size=10)
 
     # To plot hubs
     if solution_hubs_ids is not None:

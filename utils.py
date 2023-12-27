@@ -23,6 +23,9 @@ def load_solution(file_name: str) -> dict:
     # Remap variables keys to tuple
     converted_data = {key: __convert_to_tuple__(value) for key, value in data['variables'].items()}
     data["variables"] = converted_data
+    
+
+    
     return data
 
 
@@ -33,5 +36,5 @@ def __convert_to_tuple__(dictionary):
 
 
 if __name__ == "__main__":
-    for k,v in load_solution("usaphmp_2023_12_26_17_13_28.json").items():
+    for k,v in load_solution("usaphmp_2023_12_26_18_35_10.json").items():
         print(f"{k}: {v}")
