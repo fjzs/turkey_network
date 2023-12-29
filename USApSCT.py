@@ -39,7 +39,10 @@ class USApSCT:
         self.par_max_arrival_time = max_time                                                # β
         
         # Create optimization model
-        self.instance_name = "USApSCT_n" + {max_nodes} + "_p" + {self.par_number_hubs} + "_t" + {self.par_max_arrival_time}
+        self.instance_name = "USApSCT_n" + str(max_nodes)
+        self.instance_name += "_p" + str(self.par_number_hubs)
+        self.instance_name += "_t" + str(self.par_max_arrival_time)
+        print(f"Instance name: {self.instance_name}")
         self.model = gp.Model('USApSCT')
         
         # Create variables (var_)
@@ -102,7 +105,7 @@ class USApSCT:
             elif param_name == "flow":
                 city_i_to_j_dict = city_i.flow_goods_to_other_cities
             elif param_name == "fixed_link_cost":
-                city_i_to_j_dict = city_i.fixed_hub_cost
+                city_i_to_j_dict = city_i.fixed_link_cost_to_other_cities
             else:
                 raise ValueError(f"param_name {param_name} not recognized")
 
@@ -350,7 +353,7 @@ class USApSCT:
             (self.var_departure_from_hub_to_dest[l] >=
              self.var_departure_from_hub_to_hub[k] + 
              self.par_travel_time_min[k,l] - 
-             self.par_max_arrival_time*(1 - self.var_link_hub[k,l])
+             self.par_max_arrival_time*(1 - self.var_link_hubs[k,l])
              for k in N for l in N
              ),
              name = "departure from hub to destination waits for hub to hub trucks"
