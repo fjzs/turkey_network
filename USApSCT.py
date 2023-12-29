@@ -2,6 +2,7 @@ from typing import Dict
 from class_city import City
 import gurobipy as gp
 from gurobipy import GRB
+import utils
 
 class USApSCT:
     """This class implements the uncapacitated, single allocation p-hub set covering with
@@ -87,6 +88,10 @@ class USApSCT:
         self.__set_objective_function__()
 
         self.model.update()
+
+        print(f"There are {len(self.model.getConstrs())} constraints")
+
+        
 
     
     def __get_set_cities__(self, max_nodes: int) -> list:
@@ -505,18 +510,27 @@ class USApSCT:
         )
 
     def solve(self):
-        print("\n\n")
-        self.model.optimize()    
+        print("\n\n\nSOLVING...\n")
+        self.model.optimize()
 
-    def get_solution(self):
+        all_vars = self.model.getVars()
+        values = self.model.getAttr("X", all_vars)
+        names = self.model.getAttr("VarName", all_vars)
 
-        for index, val in self.model.getAttr('X', self.var_Z).items():
+        for name, val in zip(names, values):
             if val > 0:
-                print(f"Z {index}: {val}")
+                print(f"{name} = {val}")    
 
-        for index, val in self.model.getAttr('X', self.var_Y).items():
-            if val > 0:
-                print(f"Y {index}: {val}")
+    def save_solution(self):
+        """Saves the solution in a json file
+        """
+        solution = dict()
+        
+        # Append variables values
+        solution['variables'] = {}
+        solution['variables']['Z'] = self.model.getAttr('X', self.var_Z)
+        solution['variables']['Y'] = self.model.getAttr('X', self.var_Z)
+        utils.save_solution(solution)
 
 
 
@@ -524,5 +538,5 @@ if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
     problem = USApSCT(cities_data, max_nodes=5, number_hubs=2, max_time=3000)
-    # problem.solve()
+    problem.solve()
     # problem.get_solution()

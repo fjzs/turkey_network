@@ -72,6 +72,8 @@ class USApHMP:
 
 
     def save_solution(self):
+        """Saves the current solution as a json file
+        """
         solution = dict()
         solution['model'] = 'usaphmp'
         

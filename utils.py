@@ -6,6 +6,11 @@ from time import strftime
 FOLDER = "./solutions/"
 
 def save_solution(data: dict) -> None:
+    """Saves the dict as a json file
+
+    Args:
+        data (dict):
+    """
     timestamp = strftime("%Y_%m_%d_%H_%M_%S")
     file_name = data['model'] + "_" + timestamp + ".json"
     filepath = os.path.join(FOLDER, file_name)
