@@ -1,35 +1,31 @@
 import ast
 import json
 import os
-from time import strftime
+
 
 FOLDER = "./solutions/"
 
-def save_solution(data: dict) -> None:
+def save_solution(data: dict, file_name: str) -> None:
     """Saves the dict as a json file
 
     Args:
         data (dict):
     """
-    timestamp = strftime("%Y_%m_%d_%H_%M_%S")
-    file_name = data['model'] + "_" + timestamp + ".json"
-    filepath = os.path.join(FOLDER, file_name)
+    filepath = os.path.join(FOLDER, file_name + ".json")
     
     with open(filepath, 'w') as outfile:
-        json.dump(data, outfile, sort_keys=False, indent=4)
-        print(f"Solution of model {data['model']} saved in {filepath}")
+        json.dump(data, outfile, sort_keys=True, indent=4)
+        print(f"\n{file_name} saved in {filepath}")
 
 def load_solution(file_name: str) -> dict:
     
     data = dict()
-    with open(os.path.join(FOLDER, file_name)) as f:
+    with open(os.path.join(FOLDER, file_name + ".json")) as f:
         data = json.load(f)
     
     # Remap variables keys to tuple
     converted_data = {key: __convert_to_tuple__(value) for key, value in data['variables'].items()}
     data["variables"] = converted_data
-    
-
     
     return data
 

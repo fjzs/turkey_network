@@ -2,6 +2,7 @@ from typing import Dict
 from class_city import City
 import gurobipy as gp
 from gurobipy import GRB
+import plotter
 import utils
 
 class USApSCT:
@@ -34,7 +35,7 @@ class USApSCT:
         self.par_travel_time_min = self.__get_city_to_city_parameter__("travel_time_min")   # t_ij
         self.par_fixed_link_cost = self.__get_city_to_city_parameter__("fixed_link_cost")   # f_ij
         self.par_supply = self.__get_node_supply__()                                        # s_i
-        self.par_unit_cost_per_km_flow = 1                                                  # c
+        self.par_unit_cost_per_km_flow = 0.1                                                # c
         self.par_hub_to_hub_discount_factor = 0.5                                           # α
         self.par_number_hubs = number_hubs                                                  # p
         self.par_max_arrival_time = max_time                                                # β
@@ -49,7 +50,7 @@ class USApSCT:
         # Create variables (var_)
         self.var_flow_orig_hub = self._add_var_flow_orig_hub()                              # F_ik
         self.var_assign_orig_hub = self._add_var_assign_orig_hub()                          # Z_ik
-        self.var_flow_orig_hub_hub = self._add_var_flow_orig_hubs()                         # Y_ikl
+        self.var_flow_orig_hub_hub = self._add_var_flow_orig_hub_hub()                      # Y_ikl
         self.var_flow_orig_hub_dest = self._add_var_flow_orig_hub_dest()                    # X_ilj
         self.var_link_hubs = self._add_var_link_hubs()                                      # R_kl
         self.var_departure_from_hub_to_hub = self._add_var_departure_from_hub_to_hub()      # DHH_k
@@ -64,6 +65,7 @@ class USApSCT:
         self._add_constraint_flow_between_hubs_implies_link()
         self._add_constraint_conservation_of_flow_at_hub_from_origin()
         self._add_constraint_flow_node_in_hubs_implies_node_to_hub()
+        self._add_constraint_flow_origin_destination_covered()
         self._add_constraint_link_between_hubs_implies_hubs()
         self._add_constraint_departure_from_hub_to_hub_waits_customers()
         self._add_constraint_departure_from_hub_to_destination_waits_for_hub_trucks()
@@ -89,8 +91,12 @@ class USApSCT:
 
         self.model.update()
 
-        print(f"There are {len(self.model.getConstrs())} constraints")
-
+        # print(f"\n\nCONSTRAINTS:")
+        # for i, con in enumerate(self.model.getConstrs()):
+        #     if con.ConstrName.startswith()
+        #     print(f"\n{con}:\n{self.model.getRow(con)} {con.Sense} {con.RHS}")
+        #     if i == 10:
+        #         break
         
 
     
@@ -154,18 +160,33 @@ class USApSCT:
         N = self.set_cities
         return self.model.addVars(N, N, lb=0, ub=1, vtype = GRB.BINARY, name="assign_orig_hub")
 
-    def _add_var_flow_orig_hubs(self):
+    def _add_var_flow_orig_hub_hub(self):
         """
-        Y_ikl: flow from i that goes between hubs k and l
+        * Y_ikl: flow from i that goes between hubs k and l
+        * Ɐ i ∈ N, Ɐ k ∈ N, Ɐ l ∈ N: k != l
         """
         N = self.set_cities
-        return self.model.addVars(N, N, N, lb=0, vtype = GRB.CONTINUOUS, name="flow_orig_hubs")
+        N3 = set()
+        for i in N:
+            for k in N:
+                for l in N:
+                    if k != l:
+                        N3.add((i,k,l))
+        return self.model.addVars(N3, lb=0, vtype = GRB.CONTINUOUS, name="flow_orig_hub_hub")
     
     def _add_var_flow_orig_hub_dest(self):
-        """X_ilj: flow from i going through hub l to destination j
+        """
+        * X_ilj: flow from i going through hub l to destination j
+        * Ɐ i ∈ N, l ∈ N, j ∈ N: i != j
         """
         N = self.set_cities
-        return self.model.addVars(N, N, N, lb=0, vtype = GRB.CONTINUOUS, name="flow_orig_hub_dest")
+        N3 = set()
+        for i in N:
+            for l in N:
+                for j in N:
+                    if i != j:
+                        N3.add((i,l,j))
+        return self.model.addVars(N3, lb=0, vtype = GRB.CONTINUOUS, name="flow_orig_hub_dest")
 
     def _add_var_link_hubs(self):
         """R_kl: 1 if hubs k and l are connected to transport goods
@@ -271,8 +292,8 @@ class USApSCT:
         """
         N = self.set_cities
         self.model.addConstrs(
-            (self.var_flow_orig_hub[i,k] == gp.quicksum(self.var_flow_orig_hub_hub[i,k,l] for l in N) + 
-             gp.quicksum(self.var_flow_orig_hub_dest[i,k,j] for j in N)
+            (self.var_flow_orig_hub[i,k] == gp.quicksum(self.var_flow_orig_hub_hub[i,k,l] for l in N if k != l) + 
+             gp.quicksum(self.var_flow_orig_hub_dest[i,k,j] for j in N if i != j)
              for i in N for k in N),
              name = "multicomodity flow conservation at hub")
 
@@ -454,7 +475,7 @@ class USApSCT:
             self.var_OF_transport_transfer_cost == 
             gp.quicksum(
                 self.var_flow_orig_hub_hub[i,k,l] * self.par_distance_km[k,l] * self.par_unit_cost_per_km_flow
-                for i in N for k in N for l in N
+                for i in N for k in N for l in N if k != l
             ),
             name = "OF_transport_transfer_cost"
         )
@@ -472,7 +493,7 @@ class USApSCT:
             self.var_OF_transport_distribution_cost == 
             gp.quicksum(
                 self.var_flow_orig_hub_dest[i,l,j] * self.par_distance_km[l,j] * self.par_unit_cost_per_km_flow
-                for i in N for l in N for j in N
+                for i in N for l in N for j in N if i != j
             ),
             name = "OF_transport_distribution_cost"
         )
@@ -513,30 +534,75 @@ class USApSCT:
         print("\n\n\nSOLVING...\n")
         self.model.optimize()
 
-        all_vars = self.model.getVars()
-        values = self.model.getAttr("X", all_vars)
-        names = self.model.getAttr("VarName", all_vars)
-
-        for name, val in zip(names, values):
-            if val > 0:
-                print(f"{name} = {val}")    
-
     def save_solution(self):
-        """Saves the solution in a json file
+        """Saves the variables with values != 0 in a json file
         """
         solution = dict()
         
-        # Append variables values
+        def remove_0_values(d: dict()) -> dict():
+            return { str(k): v for (k,v) in d.items() if v != 0}
+        
+        # Objective function value
+        solution["OF_val"] = self.model.ObjVal
+
+        # Append objective function components
+        solution['OF'] = {}
+        solution['OF']['location_cost'] = self.var_OF_location_cost.X
+        solution['OF']['transport_collection_cost'] = self.var_OF_transport_collection_cost.X
+        solution['OF']['transport_transfer_cost'] = self.var_OF_transport_transfer_cost.X
+        solution['OF']['transport_distribution_cost'] = self.var_OF_transport_distribution_cost.X
+        solution['OF']['links_cost'] = self.var_OF_links_cost.X
+
+        # Append variables
         solution['variables'] = {}
-        solution['variables']['Z'] = self.model.getAttr('X', self.var_Z)
-        solution['variables']['Y'] = self.model.getAttr('X', self.var_Z)
-        utils.save_solution(solution)
+        solution['variables']['flow_orig_hub'] = remove_0_values(self.model.getAttr('X', self.var_flow_orig_hub))
+        solution['variables']['assign_orig_hub'] = remove_0_values(self.model.getAttr('X', self.var_assign_orig_hub))
+        solution['variables']['flow_orig_hub_hub'] = remove_0_values(self.model.getAttr('X', self.var_flow_orig_hub_hub))
+        solution['variables']['flow_orig_hub_dest'] = remove_0_values(self.model.getAttr('X', self.var_flow_orig_hub_dest))
+        solution['variables']['link_hubs'] = remove_0_values(self.model.getAttr('X', self.var_link_hubs))
+        solution['variables']['departure_from_hub_to_hub'] = remove_0_values(self.model.getAttr('X', self.var_departure_from_hub_to_hub))
+        solution['variables']['departure_from_hub_to_dest'] = remove_0_values(self.model.getAttr('X', self.var_departure_from_hub_to_dest))
+        solution['variables']['arrival_to_dest'] = remove_0_values(self.model.getAttr('X', self.var_arrival_to_dest))
+
+        utils.save_solution(solution, file_name=self.instance_name)
+
+    def load_solution(self):
+        """Loads the values of the variables in a saved solution
+        """        
+        return utils.load_solution(self.instance_name)
+
+    def plot_solution(self):
+        solution = self.load_solution()
+        
+        # Input for plotting
+        hubs_ids = set()
+        origin_hub_flow_collection = solution["variables"]["flow_orig_hub"]
+        origin_hub_hub_flow_transfer = solution["variables"]["flow_orig_hub_hub"]
+        origin_hub_destination_flow_distribution = solution["variables"]["flow_orig_hub_dest"]
+
+        # Getting hubs_ids
+        Z = solution["variables"]["assign_orig_hub"]
+        for (i,j), _ in Z.items():
+            if i == j:
+                hubs_ids.add(j)
+        
+        # Now we can plot
+        plotter.plot_map(cities_data = self.cities_data,
+                         cities_considered = self.set_cities,
+                         hubs_ids=hubs_ids,
+                         collection=origin_hub_flow_collection,
+                         transfer=origin_hub_hub_flow_transfer,
+                         distribution=origin_hub_destination_flow_distribution,
+                         plot_name=self.instance_name
+                         )
+
 
 
 
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApSCT(cities_data, max_nodes=5, number_hubs=2, max_time=3000)
+    problem = USApSCT(cities_data, max_nodes=4, number_hubs=2, max_time=3000)
     problem.solve()
-    # problem.get_solution()
+    problem.save_solution()
+    problem.plot_solution()

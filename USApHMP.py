@@ -98,8 +98,8 @@ class USApHMP:
             solution_city_hub_connection.add((i,j))
         
         # Now we can plot
-        plotter.plot_map(cities = self.cities_data,
-                         solution_hubs_ids = solution_hubs_ids,
+        plotter.plot_map(cities_data = self.cities_data,
+                         hubs_ids = solution_hubs_ids,
                          solution_city_hub_connection = solution_city_hub_connection
                          )
 
