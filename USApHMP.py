@@ -57,7 +57,8 @@ class USApHMP:
 
     def solve(self):
         print("\n\n\nSTARTING SOLVER\n")
-        self.model.optimize()    
+        self.model.optimize() 
+
 
     def __parse_solution_variable__(self, var_values: dict) -> dict:
         """Parses the keys to be inmutable
