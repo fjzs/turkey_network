@@ -51,15 +51,15 @@ def plot_map(cities_data: dict(),
             if i in hubs_ids:
                 plt.scatter(cities_data[i].longitude, 
                             cities_data[i].latitude, 
-                            s=120, 
-                            marker='s', 
+                            s=150, 
+                            marker='s', # square
                             color='blue', 
                             zorder=80)
             else:
-                plt.scatter(cities_data[i].longitude, 
-                            cities_data[i].latitude, 
-                            s=120, 
-                            marker="o", 
+                plt.scatter(cities_data[i].longitude + 0.05, 
+                            cities_data[i].latitude + 0, 
+                            s=160, 
+                            marker="o", # circle
                             color="red", 
                             zorder=80)
 
@@ -98,6 +98,9 @@ def plot_map(cities_data: dict(),
 
     # Remove redundant keys
     total_flow = {(i,j):v for (i,j),v in total_flow.items() if i < j}
+    print(f"\nTotal flow in arcs:")
+    for (i,j), flow in total_flow.items():
+        print(f"{i,j}: {flow}")
 
     # Get max flow to gauge linewidths
     max_flow = max(total_flow.values())

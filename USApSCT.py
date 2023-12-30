@@ -16,33 +16,35 @@ class USApSCT:
     Networks 49(1): 28-39, doi: 10.1002/net.20139.
     - Ernst, A.T., Krishnamoorthy, M. (1996). “Efficient algorithms for the uncapacitated 
     ingle allocation p-hub median problem”. Location Science 4(3): 139-154.
-
     """
 
     def __init__(self, cities_data: Dict[int, City], max_nodes:int = 81, number_hubs:int = 1, max_time:int = 2000):
         assert 2 <= max_nodes <= 81
-        assert 1 <= number_hubs
         assert 1 <= max_time
         self.cities_data = cities_data
         
+        # TODO:
+        # Eliminate infeasible combinations de i -> k -> l -> j because travel time is violated
+
         # Define sets starting with set_
         self.set_cities = self.__get_set_cities__(max_nodes)                                # N
 
         # Define parameters starting with par_
-        self.par_flow = self.__get_city_to_city_parameter__("flow")                         # w_ij
+        self.par_flow_box = self.__get_city_to_city_parameter__("flow")                     # w_ij
         self.par_fixed_hub_cost = self.__get_hub_cost__()                                   # h_i
         self.par_distance_km = self.__get_city_to_city_parameter__("distance_km")           # d_ij
         self.par_travel_time_min = self.__get_city_to_city_parameter__("travel_time_min")   # t_ij
         self.par_fixed_link_cost = self.__get_city_to_city_parameter__("fixed_link_cost")   # f_ij
         self.par_supply = self.__get_node_supply__()                                        # s_i
-        self.par_unit_cost_per_km_flow = 0.1                                                # c
-        self.par_hub_to_hub_discount_factor = 0.5                                           # α
+        self.par_unit_cost_per_km_flow = 1                                                  # c
+        self.par_hub_to_hub_cost_factor = 8                                                 # α
+        self.par_hub_to_hub_speed_factor = 0.25                                             # δ
         self.par_number_hubs = number_hubs                                                  # p
         self.par_max_arrival_time = max_time                                                # β
         
         # Create optimization model
         self.instance_name = "USApSCT_n" + str(max_nodes)
-        self.instance_name += "_p" + str(self.par_number_hubs)
+        self.instance_name += "_p" + ("None" if self.par_number_hubs is None else str(self.par_number_hubs))
         self.instance_name += "_t" + str(self.par_max_arrival_time)
         print(f"Instance name: {self.instance_name}")
         self.model = gp.Model('USApSCT')
@@ -61,6 +63,7 @@ class USApSCT:
         self._add_constraint_locate_hubs()
         self._add_constraint_assign_node_to_single_hub()
         self._add_constraint_hub_implication()
+        self._add_constraint_hub_has_minimum_customers()
         self._add_constraint_flow_from_source()
         self._add_constraint_flow_between_hubs_implies_link()
         self._add_constraint_conservation_of_flow_at_hub_from_origin()
@@ -68,7 +71,7 @@ class USApSCT:
         self._add_constraint_flow_origin_destination_covered()
         self._add_constraint_link_between_hubs_implies_hubs()
         self._add_constraint_departure_from_hub_to_hub_waits_customers()
-        self._add_constraint_departure_from_hub_to_destination_waits_for_hub_trucks()
+        self._add_constraint_departure_from_hub_to_destination_waits_for_hub_airplanes()
         self._add_constraint_latest_arrival_time_to_destination()
         self._add_constraint_latest_arrival_to_dest_within_limit()
 
@@ -91,9 +94,9 @@ class USApSCT:
 
         self.model.update()
 
-        # print(f"\n\nCONSTRAINTS:")
-        # for i, con in enumerate(self.model.getConstrs()):
-        #     print(f"\n{con}:\n{self.model.getRow(con)} {con.Sense} {con.RHS}")            
+        print(f"\n\nCONSTRAINTS:")
+        for i, con in enumerate(self.model.getConstrs()):
+            print(f"\n{con}:\n{self.model.getRow(con)} {con.Sense} {con.RHS}")            
         
 
     
@@ -167,7 +170,7 @@ class USApSCT:
         for i in N:
             for k in N:
                 for l in N:
-                    if k != l and i != l:
+                    if (k != l) and (i != l):
                         N3.add((i,k,l))
         return self.model.addVars(N3, lb=0, vtype = GRB.CONTINUOUS, name="Y")
     
@@ -224,9 +227,10 @@ class USApSCT:
         * Σ_i Z_ii = p
         """
         N = self.set_cities
-        self.model.addConstr(
-            gp.quicksum(self.var_assign_orig_hub[i, i] for i in N) == self.par_number_hubs,
-            name = "locate p hubs")
+        if self.par_number_hubs is not None:
+            self.model.addConstr(
+                gp.quicksum(self.var_assign_orig_hub[i, i] for i in N) == self.par_number_hubs,
+                name = "locate p hubs")
 
     def _add_constraint_assign_node_to_single_hub(self):
         """
@@ -252,6 +256,21 @@ class USApSCT:
             (self.var_assign_orig_hub[i,k] <= self.var_assign_orig_hub[k,k] 
             for i in N for k in N if i != k), 
             name = "node to hub implies hub")
+
+    def _add_constraint_hub_has_minimum_customers(self):
+        """
+        Each hub must have at least 1 customer
+
+        * Z_kk <= Σ_i (i != k) Z_ik
+        * Ɐ k ∈ N
+        """
+        N = self.set_cities
+        self.model.addConstrs(
+            (self.var_assign_orig_hub[k,k] 
+            <= 
+            gp.quicksum(self.var_assign_orig_hub[i,k] for i in N if i != k)
+            for k in N), 
+            name = "hub has minimum number of customers")
 
     def _add_constraint_flow_from_source(self):
         """
@@ -324,7 +343,7 @@ class USApSCT:
         N = self.set_cities
         self.model.addConstrs(
             (self.var_flow_orig_hub_dest[i,l,j] == 
-             self.var_assign_orig_hub[j,l] * self.par_flow[i,j]
+             self.var_assign_orig_hub[j,l] * self.par_flow_box[i,j]
              for i in N for l in N for j in N if i != j
              ),
              name = "flow from origin to destination is covered"
@@ -349,14 +368,14 @@ class USApSCT:
     def _add_constraint_departure_from_hub_to_hub_waits_customers(self):
         """
         A vehicle departuring from hub k to other hubs must wait cargo from
-        its customers (nodes assigned to k)
+        its customers (nodes assigned to k) travelling by truck
 
-        * 2*DHH_k >= t_ik * Z_ik
+        * DHH_k >= t_ik * Z_ik
         * Ɐ i ∈ N, Ɐ k ∈ N: i != k
         """
         N = self.set_cities
         self.model.addConstrs(
-            (2*self.var_departure_from_hub_to_hub[k] >=
+            (self.var_departure_from_hub_to_hub[k] >=
              self.par_travel_time_min[i,k] * 
              self.var_assign_orig_hub[i,k]
              for i in N for k in N if i != k
@@ -364,13 +383,14 @@ class USApSCT:
              name = "departure from hub to hub waits for its customers"
         )
     
-    def _add_constraint_departure_from_hub_to_destination_waits_for_hub_trucks(self):
+    def _add_constraint_departure_from_hub_to_destination_waits_for_hub_airplanes(self):
         """
-        The departuring time from hub l to its customers DHC_l must
-        wait for incoming cargo from other hubs k DHH_k to consolidate cargo to customers
+        The departuring time from hub l to its customers (DHC_l) must
+        wait for incoming air cargo from other hubs k DHH_k to consolidate cargo.
+        Recall δ is the speed factor of travel time through hubs
 
-        * Original non-linear: DHD_l >= (DHH_k + t_kl) * R_kl
-        * Linearized: DHD_l >= DHH_k + t_kl - M(1 - R_kl)
+        * Original non-linear: DHD_l >= (DHH_k + t_kl * δ) * R_kl
+        * Linearized: DHD_l >= DHH_k + t_kl * δ - M(1 - R_kl)
         * Where M is a sufficient big number, in this case: M = β (max delivery time)
         * Ɐ k ∈ N, Ɐ l ∈ N
         """
@@ -378,7 +398,7 @@ class USApSCT:
         self.model.addConstrs(
             (self.var_departure_from_hub_to_dest[l] >=
              self.var_departure_from_hub_to_hub[k] + 
-             self.par_travel_time_min[k,l] - 
+             self.par_travel_time_min[k,l] * self.par_hub_to_hub_speed_factor - 
              self.par_max_arrival_time*(1 - self.var_link_hubs[k,l])
              for k in N for l in N
              ),
@@ -468,13 +488,16 @@ class USApSCT:
     def _add_constraint_OF_transport_transfer_cost(self):
         """The transportation cost of transfer activities
 
-        * Σ_i Σ_k Σ_l (k != l & l != i) Y_ikl * d_kl * c
+        * Σ_i Σ_k Σ_l (k != l & l != i) Y_ikl * d_kl * c * α
         """
         N = self.set_cities
         self.model.addConstr(
             self.var_OF_transport_transfer_cost == 
             gp.quicksum(
-                self.var_flow_orig_hub_hub[i,k,l] * self.par_distance_km[k,l] * self.par_unit_cost_per_km_flow
+                self.var_flow_orig_hub_hub[i,k,l] * 
+                self.par_distance_km[k,l] * 
+                self.par_unit_cost_per_km_flow * 
+                self.par_hub_to_hub_cost_factor
                 for i in N for k in N for l in N if (k != l) and (l != i)
             ),
             name = "OF_transport_transfer_cost"
@@ -527,7 +550,7 @@ class USApSCT:
             self.var_OF_transport_collection_cost + 
             self.var_OF_transport_distribution_cost + 
             self.var_OF_transport_transfer_cost,
-            sense=GRB.MINIMIZE
+            sense = GRB.MINIMIZE
         )
 
     def solve(self):
@@ -555,6 +578,9 @@ class USApSCT:
         
         # Objective function value
         solution["OF_val"] = self.model.ObjVal
+
+        # Time needed to solve problem
+        solution["time_s"] = self.model.Runtime
 
         # Append objective function components
         solution['OF'] = {}
@@ -613,7 +639,7 @@ class USApSCT:
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApSCT(cities_data, max_nodes=2, number_hubs=2, max_time=3000)
+    problem = USApSCT(cities_data, max_nodes=4, number_hubs=None, max_time=1000)
     problem.solve()
     problem.save_solution()
     problem.plot_solution()
