@@ -73,7 +73,7 @@ def load_data() -> Dict[int, City]:
     """
     cities = __get_cities()
     __fill_city_to_city_info(cities, sheet_name = "distance_km")
-    __fill_city_to_city_info(cities, sheet_name = "travel_time_min")
+    #__fill_city_to_city_info(cities, sheet_name = "travel_time_min")
     __fill_city_to_city_info(cities, sheet_name = "flow_normalized")
     __fill_city_to_city_info(cities, sheet_name = "fixed_link_cost")
     return cities

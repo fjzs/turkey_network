@@ -18,34 +18,37 @@ class USApSCT:
     ingle allocation p-hub median problem”. Location Science 4(3): 139-154.
     """
 
-    def __init__(self, cities_data: Dict[int, City], max_nodes:int = 81, number_hubs:int = 1, max_time:int = 2000):
+    def __init__(self, cities_data: Dict[int, City], max_nodes:int = 81, number_hubs:int = 1, max_time_h:int = 30):
         assert 2 <= max_nodes <= 81
-        assert 1 <= max_time
+        assert 1 <= max_time_h
         self.cities_data = cities_data
         
         # TODO:
         # Eliminate infeasible combinations de i -> k -> l -> j because travel time is violated
+        # Optimize second phase objective to minimize travel times
 
         # Define sets starting with set_
-        self.set_cities = self.__get_set_cities__(max_nodes)                                # N
+        self.set_cities = self._get_set_cities(max_nodes)                                # N
 
         # Define parameters starting with par_
-        self.par_flow_box = self.__get_city_to_city_parameter__("flow")                     # w_ij
-        self.par_fixed_hub_cost = self.__get_hub_cost__()                                   # h_i
-        self.par_distance_km = self.__get_city_to_city_parameter__("distance_km")           # d_ij
-        self.par_travel_time_min = self.__get_city_to_city_parameter__("travel_time_min")   # t_ij
-        self.par_fixed_link_cost = self.__get_city_to_city_parameter__("fixed_link_cost")   # f_ij
-        self.par_supply = self.__get_node_supply__()                                        # s_i
+        self.par_flow_box = self._get_city_to_city_parameter("flow")                        # w_ij
+        self.par_fixed_hub_cost = self._get_hub_cost()                                      # h_i
+        self.par_distance_km = self._get_city_to_city_parameter("distance_km")              # d_ij
+        self.par_fixed_link_cost = self._get_city_to_city_parameter("fixed_link_cost")      # f_ij
+        self.par_supply = self._get_node_supply()                                           # s_i
         self.par_unit_cost_per_km_flow = 1                                                  # c
+        self.par_speed_trucks_kph = 60                                                      # v_t
+        self.par_speed_planes_kph = 650                                                     # v_a
+        self.par_travel_time_truck_h = self._get_travel_time(self.par_speed_trucks_kph)     # tt_ij
+        self.par_travel_time_plane_h = self._get_travel_time(self.par_speed_planes_kph)     # tp_ij
         self.par_hub_to_hub_cost_factor = 8                                                 # α
-        self.par_hub_to_hub_speed_factor = 0.25                                             # δ
         self.par_number_hubs = number_hubs                                                  # p
-        self.par_max_arrival_time = max_time                                                # β
+        self.par_max_arrival_time_h = max_time_h                                            # β
         
         # Create optimization model
         self.instance_name = "USApSCT_n" + str(max_nodes)
         self.instance_name += "_p" + ("None" if self.par_number_hubs is None else str(self.par_number_hubs))
-        self.instance_name += "_t" + str(self.par_max_arrival_time)
+        self.instance_name += "_t" + str(self.par_max_arrival_time_h)
         print(f"Instance name: {self.instance_name}")
         self.model = gp.Model('USApSCT')
         
@@ -72,6 +75,7 @@ class USApSCT:
         self._add_constraint_link_between_hubs_implies_hubs()
         self._add_constraint_departure_from_hub_to_hub_waits_customers()
         self._add_constraint_departure_from_hub_to_destination_waits_for_hub_airplanes()
+        self._add_constraint_departure_from_hub_to_destination_waits_for_customer_trucks()
         self._add_constraint_latest_arrival_time_to_destination()
         self._add_constraint_latest_arrival_to_dest_within_limit()
 
@@ -94,16 +98,16 @@ class USApSCT:
 
         self.model.update()
 
-        print(f"\n\nCONSTRAINTS:")
-        for i, con in enumerate(self.model.getConstrs()):
-            print(f"\n{con}:\n{self.model.getRow(con)} {con.Sense} {con.RHS}")            
+        # print(f"\n\nCONSTRAINTS:")
+        # for i, con in enumerate(self.model.getConstrs()):
+        #     print(f"\n{con}:\n{self.model.getRow(con)} {con.Sense} {con.RHS}")            
         
 
     
-    def __get_set_cities__(self, max_nodes: int) -> list:
+    def _get_set_cities(self, max_nodes: int) -> list:
         return list(cities_data.keys())[0: max_nodes]
 
-    def __get_city_to_city_parameter__(self, param_name: str) -> dict():
+    def _get_city_to_city_parameter(self, param_name: str) -> dict():
         param = dict() # (i,j) -> parameter_ij
         for i in self.set_cities:
             city_i = self.cities_data[i]
@@ -125,10 +129,10 @@ class USApSCT:
                     param[(i, j)] = value_ij
         return param
 
-    def __get_hub_cost__(self) -> dict():
+    def _get_hub_cost(self) -> dict():
         return {i: city.fixed_hub_cost for i, city in self.cities_data.items()}
 
-    def __get_node_supply__(self) -> dict:
+    def _get_node_supply(self) -> dict:
         flow_origin = dict() # supply of node i
         for i in self.set_cities:
             city_i = self.cities_data[i]
@@ -138,6 +142,15 @@ class USApSCT:
                     total_supply += value_ij
             flow_origin[i] = total_supply
         return flow_origin
+
+    def _get_travel_time(self, vehicle_speed: float) -> dict:
+        assert vehicle_speed > 0
+        travel_time = dict() # (i,j) -> parameter_ij
+        for i in self.set_cities:
+            city_i = self.cities_data[i]
+            for j, dist_km_ij in city_i.distance_km_to_other_cities.items():
+                travel_time[(i,j)] = dist_km_ij / vehicle_speed
+        return travel_time
 
 
     #########################################
@@ -198,19 +211,19 @@ class USApSCT:
         """DHH_k: departure time from hub k for transportation to other hubs
         """
         N = self.set_cities
-        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time, vtype = GRB.CONTINUOUS, name="DHH")
+        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time_h, vtype = GRB.CONTINUOUS, name="DHH")
 
     def _add_var_departure_from_hub_to_dest(self):
         """DHD_k: departure time from hub k for transportation to destinations
         """
         N = self.set_cities
-        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time, vtype = GRB.CONTINUOUS, name="DHD")
+        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time_h, vtype = GRB.CONTINUOUS, name="DHD")
 
     def _add_var_arrival_to_dest(self):
         """A_j: arrival time to destination j
         """
         N = self.set_cities
-        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time, vtype = GRB.CONTINUOUS, name="A")
+        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time_h, vtype = GRB.CONTINUOUS, name="A")
 
 
     #########################################
@@ -370,13 +383,13 @@ class USApSCT:
         A vehicle departuring from hub k to other hubs must wait cargo from
         its customers (nodes assigned to k) travelling by truck
 
-        * DHH_k >= t_ik * Z_ik
+        * DHH_k >= tt_ik * Z_ik
         * Ɐ i ∈ N, Ɐ k ∈ N: i != k
         """
         N = self.set_cities
         self.model.addConstrs(
             (self.var_departure_from_hub_to_hub[k] >=
-             self.par_travel_time_min[i,k] * 
+             self.par_travel_time_truck_h[i,k] * 
              self.var_assign_orig_hub[i,k]
              for i in N for k in N if i != k
              ),
@@ -387,10 +400,9 @@ class USApSCT:
         """
         The departuring time from hub l to its customers (DHC_l) must
         wait for incoming air cargo from other hubs k DHH_k to consolidate cargo.
-        Recall δ is the speed factor of travel time through hubs
-
-        * Original non-linear: DHD_l >= (DHH_k + t_kl * δ) * R_kl
-        * Linearized: DHD_l >= DHH_k + t_kl * δ - M(1 - R_kl)
+        
+        * Original non-linear: DHD_l >= (DHH_k + tp_kl) * R_kl
+        * Linearized: DHD_l >= DHH_k + tp_kl - M(1 - R_kl)
         * Where M is a sufficient big number, in this case: M = β (max delivery time)
         * Ɐ k ∈ N, Ɐ l ∈ N
         """
@@ -398,19 +410,39 @@ class USApSCT:
         self.model.addConstrs(
             (self.var_departure_from_hub_to_dest[l] >=
              self.var_departure_from_hub_to_hub[k] + 
-             self.par_travel_time_min[k,l] * self.par_hub_to_hub_speed_factor - 
-             self.par_max_arrival_time*(1 - self.var_link_hubs[k,l])
+             self.par_travel_time_plane_h[k,l] - 
+             self.par_max_arrival_time_h*(1 - self.var_link_hubs[k,l])
              for k in N for l in N
              ),
-             name = "departure from hub to destination waits for hub to hub trucks"
+             name = "departure from hub to destination waits for air cargo"
         )
     
+    def _add_constraint_departure_from_hub_to_destination_waits_for_customer_trucks(self):
+        """
+        The departuring time from hub l to its customers j (DHC_l) must
+        wait for incoming truck cargo from its customers to consolidate. This is a 
+        special case when there is only a single hub in the network.
+        
+        * DHD_l >= tt_jl * Z_jl
+        * Ɐ j ∈ N, Ɐ l ∈ N
+        """
+        N = self.set_cities
+        self.model.addConstrs(
+            (self.var_departure_from_hub_to_dest[l] >=
+             self.par_travel_time_truck_h[j,l] *
+             self.var_assign_orig_hub[j,l]
+             for j in N for l in N
+             ),
+             name = "departure from hub to destination waits for truck customers"
+        )
+
     def _add_constraint_latest_arrival_time_to_destination(self):
         """
-        The latest arrival time to destination j is subject to its deliveries from hub l
+        The latest arrival time to destination j depends on the latest airplane
+        arriving to hub l
 
-        * Original non-linear: A_j >= (DHD_l + t_lj) * Z_jl
-        * Linearized: A_j >= DHD_l + t_lj - M(1 - Z_jl)
+        * Original non-linear: A_j >= (DHD_l + tt_lj) * Z_jl
+        * Linearized: A_j >= DHD_l + tt_lj - M(1 - Z_jl)
         * Where M is a sufficient big number, in this case: M = β (max delivery time)
         * Ɐ j ∈ N, Ɐ l ∈ N
         """
@@ -418,11 +450,11 @@ class USApSCT:
         self.model.addConstrs(
             (self.var_arrival_to_dest[j] >=
              self.var_departure_from_hub_to_dest[l] + 
-             self.par_travel_time_min[l,j] - 
-             self.par_max_arrival_time*(1 - self.var_assign_orig_hub[j,l])
+             self.par_travel_time_truck_h[l,j] - 
+             self.par_max_arrival_time_h*(1 - self.var_assign_orig_hub[j,l])
              for j in N for l in N
              ),
-             name = "departure from hub to destination waits for hub to hub trucks"
+             name = "departure from hub to destination waits for hub to hub planes"
         )
 
     def _add_constraint_latest_arrival_to_dest_within_limit(self):
@@ -434,7 +466,7 @@ class USApSCT:
         """
         N = self.set_cities
         self.model.addConstrs(
-            (self.var_arrival_to_dest[j] <= self.par_max_arrival_time
+            (self.var_arrival_to_dest[j] <= self.par_max_arrival_time_h
              for j in N
              ),
              name = "max arrival time within standard"
@@ -639,7 +671,7 @@ class USApSCT:
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApSCT(cities_data, max_nodes=4, number_hubs=None, max_time=1000)
+    problem = USApSCT(cities_data, max_nodes=30, number_hubs=None, max_time_h=18)
     problem.solve()
     problem.save_solution()
     problem.plot_solution()
