@@ -1,30 +1,47 @@
+from class_city import City
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import os
+from typing import Dict
 from utils import FOLDER
 
+MIN_LINEWIDTH = 0.5
+MAX_LINEWIDTH = 8
 
-def plot_map(cities_data: dict(), 
+def _get_size_given_min_max(x, min_x, max_x, min_size, max_size) -> float:
+    """This just creates the uniform distribution
+
+    Args:
+        x:
+        min_x:
+        max_x:
+        min_size:
+        max_size:
+
+    Returns:
+        float:
+    """
+    return  min_size + ((x - min_x)/(max_x - min_x + 0.01)) * (max_size - min_size)
+
+def plot_map(cities_data: Dict[int, City],
              cities_considered: list, 
              hubs_ids: set(), 
              collection: dict(), 
              transfer: dict(), 
              distribution: dict(),
-             plot_name: str):
+             plot_name: str,
+             size_proportional_to_flow: bool = False):
     """Plots the map and optionally the solution
 
     Args:
-        cities (Dict[int, City]): data of the cities
-        cities_considered (list): ids of cities to plot
-        solution_hubs_ids (set of int): set of hubs
-        solution_city_hub_connection (set of int, int): set of (i, j) where i is a city and j is a hub
-
-    Args:
-        cities (dict): data of the cities
+        cities_data (dict): data of the cities
+        cities_considered (list): cities to plot
         hubs_ids (set): ids of the hubs
         collection (dict): collection flow: (i,k) -> flow
         transfer (dict): transfer flow: (i,k,l) -> flow
         distribution (dict): distribution flow (i,l,j) -> flow
+        plot_name (str): to save this figure
+        size_proportional_to_flow (bool): to see the map and the volumes required to transport
     """
     
     # Print map
@@ -41,27 +58,40 @@ def plot_map(cities_data: dict(),
     if cities_considered is not None:
         cities_to_plot = cities_considered
     
+    # Check volumes
+    if size_proportional_to_flow:
+        supply_per_city = dict()
+        for i, city in cities_data.items():
+            supply_per_city[i] = sum(city.flow_goods_to_other_cities.values())
+        min_supply = min(supply_per_city.values())
+        max_supply = max(supply_per_city.values())
+
     # Plot the cities numbers
     for i in cities_to_plot:
         city = cities_data[i]
-        plt.annotate(str(i), (city.longitude-0.1, city.latitude-0.1), color="white", size=10, zorder = 100)
         
-        # Plot hub shape or regular city
+        # Plotting a solution
         if hubs_ids is not None:
+            plt.annotate(str(i), (city.longitude-0.1, city.latitude-0.1), color="white", size=10, zorder=100)
             if i in hubs_ids:
-                plt.scatter(cities_data[i].longitude, 
-                            cities_data[i].latitude, 
-                            s=150, 
-                            marker='s', # square
-                            color='blue', 
-                            zorder=80)
+                plt.scatter(cities_data[i].longitude, cities_data[i].latitude, s=150, marker='s', color='blue', zorder=80)
             else:
-                plt.scatter(cities_data[i].longitude + 0.05, 
-                            cities_data[i].latitude + 0, 
-                            s=160, 
-                            marker="o", # circle
-                            color="red", 
-                            zorder=80)
+                plt.scatter(cities_data[i].longitude + 0.05, cities_data[i].latitude, s=160, marker="o", color="red", zorder=80)
+        
+        # Plotting the demand/supply sizes
+        elif size_proportional_to_flow:
+            size_ball = _get_size_given_min_max(supply_per_city[i], min_supply, max_supply, min_size=5, max_size=500)
+            plt.scatter(cities_data[i].longitude, 
+                        cities_data[i].latitude, 
+                        s=size_ball, 
+                        marker="o", 
+                        color="red", 
+                        zorder=80)
+            plt.annotate(str(city.name)[0:3], (city.longitude, city.latitude), color="black", size=10, zorder=100)
+        
+        # Plotting just the numbers
+        else:
+            plt.scatter(cities_data[i].longitude + 0.05, cities_data[i].latitude, s=160, marker="o", color="red", zorder=80)
 
     # Compute the total flow between each pair of cities (sum (i,j) and (j,i) in the same arc)
     total_flow = dict() # (i,j) -> flow
@@ -103,19 +133,15 @@ def plot_map(cities_data: dict(),
         print(f"{i,j}: {flow}")
 
     # Get max flow to gauge linewidths
-    max_flow = max(total_flow.values())
-    min_flow = min(total_flow.values())
-    min_linewidth = 0.5
-    max_linewidth = 8
-    def get_linewidth_given_flow(x) -> float:
-        return  min_linewidth + ((x - min_flow)/(max_flow - min_flow + 1)) * (max_linewidth - min_linewidth)
+    max_flow = 0 if len(total_flow) == 0 else max(total_flow.values())
+    min_flow = 0 if len(total_flow) == 0 else min(total_flow.values())    
 
     # Plot flows between cities
     for (i,j), flow in total_flow.items():
         plt.plot([cities_data[i].longitude, cities_data[j].longitude], 
                  [cities_data[i].latitude,   cities_data[j].latitude], 
                  color="black", 
-                 linewidth=get_linewidth_given_flow(flow),
+                 linewidth=  _get_size_given_min_max(flow, min_flow, max_flow, MIN_LINEWIDTH, MAX_LINEWIDTH),
                  zorder=10)
     
     # Save plot
@@ -124,10 +150,17 @@ def plot_map(cities_data: dict(),
     print(f"\nPlot saved in {filepath}")
     
 
-# if __name__ == "__main__":
-#     from dataloader import load_data
-#     cities_data = load_data()
-#     plot_map(cities_data, solution_hubs_ids=None, solution_city_hub_connection=None)
+if __name__ == "__main__":
+    from dataloader import load_data
+    cities_data = load_data()
+    plot_map(cities_data,
+             cities_considered=None,
+             hubs_ids=None,
+             collection=None,
+             transfer=None,
+             distribution=None,
+             plot_name="test",
+             size_proportional_to_flow=True)
 
 
 

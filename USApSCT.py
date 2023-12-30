@@ -671,7 +671,7 @@ class USApSCT:
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApSCT(cities_data, max_nodes=30, number_hubs=None, max_time_h=18)
+    problem = USApSCT(cities_data, max_nodes=30, number_hubs=None, max_time_h=36)
     problem.solve()
     problem.save_solution()
     problem.plot_solution()
