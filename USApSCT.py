@@ -24,11 +24,12 @@ class USApSCT:
         self.cities_data = cities_data
         
         # TODO:
-        # Eliminate infeasible combinations de i -> k -> l -> j because travel time is violated
-        # Optimize second phase objective to minimize travel times
+        # Done: Eliminate infeasible combinations de i -> k -> l -> j because travel time is violated
+        # Not needed: Optimize second phase objective to minimize travel times
+        # Ask Armin why would the cuts not affect presolve
 
         # Define sets starting with set_
-        self.set_cities = self._get_set_cities(max_nodes)                                # N
+        self.set_cities = self._get_set_cities(max_nodes)                                   # N
 
         # Define parameters starting with par_
         self.par_flow_box = self._get_city_to_city_parameter("flow")                        # w_ij
@@ -66,7 +67,7 @@ class USApSCT:
         self._add_constraint_locate_hubs()
         self._add_constraint_assign_node_to_single_hub()
         self._add_constraint_hub_implication()
-        self._add_constraint_hub_has_minimum_customers()
+        #self._add_constraint_hub_has_minimum_customers()
         self._add_constraint_flow_from_source()
         self._add_constraint_flow_between_hubs_implies_link()
         self._add_constraint_conservation_of_flow_at_hub_from_origin()
@@ -79,6 +80,9 @@ class USApSCT:
         self._add_constraint_latest_arrival_time_to_destination()
         self._add_constraint_latest_arrival_to_dest_within_limit()
 
+        # Apply cuts (not working yet)
+        #self._add_constraint_eliminate_slowest_combinations()
+        #self._add_constraint_eliminate_slowest_node_hub_assignment()
 
         # Set objective function
         # Variables for objective function (var_OF_)
@@ -474,6 +478,80 @@ class USApSCT:
 
     #########################################
     #                                       #
+    #                  CUTS                 #
+    #                                       #
+    #########################################
+    
+    def _add_constraint_eliminate_slowest_combinations(self):
+        """
+        There are some combinations of routes that are infeasible because
+        they are too slow for the given time standard β. These are such
+        routes i -> k -> l -> j, where k and l are hubs. The condition is:
+
+        * if tt_ik + tp_kl + tt_lj > β
+        * then: Z_ik + R_kl + Z_jl <= 2
+        * Ɐ i ∈ N, Ɐ k ∈ N, Ɐ l ∈ N, Ɐ j ∈ N: k != l, i != j
+        """
+        N = self.set_cities
+        tt = self.par_travel_time_truck_h
+        tp = self.par_travel_time_plane_h
+        beta = self.par_max_arrival_time_h
+        infeasible_combinations = []
+        print(f"\nApplying cut: detecting tt_ik + tp_kl + tt_lj > β")
+        for i in N:
+            for k in N:
+                for l in N:
+                    for j in N:
+                        if (k != l) and (i != j):
+                            time_iklj = tt[i,k] + tp[k,l] + tp[l,j]
+                            if time_iklj > beta:
+                                infeasible_combinations.append((i,k,l,j))
+                                print(f"\ttime through {i,k,l,j} = {time_iklj} > {beta}")
+        print(f"\tTotal number of this cut: {len(infeasible_combinations)}")
+
+        self.model.addConstrs(
+            (self.var_assign_orig_hub[i,k] +
+             self.var_link_hubs[k,l] + 
+             self.var_assign_orig_hub[j,l]
+             <=
+             2
+             for (i,k,l,j) in infeasible_combinations
+             ),
+             name = "cut routes taking longer than β"
+        )
+
+    def _add_constraint_eliminate_slowest_node_hub_assignment(self):
+        """
+        There are some combinations of Z_ik that are infeasible because
+        tt_ik > β.
+
+        * if tt_ik > β
+        * then: Z_ik = 0
+        * Ɐ i ∈ N, Ɐ k ∈ N: i != k
+        """
+        N = self.set_cities
+        tt = self.par_travel_time_truck_h        
+        beta = self.par_max_arrival_time_h
+        infeasible_combinations = []
+        print(f"\nApplying cut: detecting tt_ik > β")
+        for i in N:
+            for k in N:
+                if (i != k) and (tt[i,k] > beta):
+                    infeasible_combinations.append((i,k))
+                    print(f"\ttt_ik {i,k} = {tt[i,k]} > {beta}")
+        print(f"\tTotal number of this cut: {len(infeasible_combinations)}")
+
+        self.model.addConstrs(
+            (self.var_assign_orig_hub[i,k] == 0
+             for (i,k) in infeasible_combinations
+             ),
+             name = "cut node to hub assignment taking longer than β"
+        )
+
+
+
+    #########################################
+    #                                       #
     #          OBJECTIVE FUNCTION           #
     #                                       #
     #########################################
@@ -671,7 +749,7 @@ class USApSCT:
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApSCT(cities_data, max_nodes=30, number_hubs=None, max_time_h=36)
+    problem = USApSCT(cities_data, max_nodes=45, number_hubs=None, max_time_h=25)
     problem.solve()
     problem.save_solution()
     problem.plot_solution()
