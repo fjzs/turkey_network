@@ -18,7 +18,16 @@ class USApSCT:
     ingle allocation p-hub median problem”. Location Science 4(3): 139-154.
     """
 
-    def __init__(self, cities_data: Dict[int, City], max_nodes:int = 81, number_hubs:int = 1, max_time_h:int = 30):
+    def __init__(self, cities_data: Dict[int, City], 
+                 max_nodes:int = 81, 
+                 number_hubs:int = 1, 
+                 max_time_h:int = 30,
+                 min_city_supply_ranking_to_be_hub:int = 81,
+                 min_latitude_to_be_hub: float = 36,
+                 max_latitude_to_be_hub: float = 45,
+                 min_longitude_to_be_hub: float = 26,
+                 max_longitude_to_be_hub: float = 45
+                 ):
         assert 2 <= max_nodes <= 81
         assert 1 <= max_time_h
         self.cities_data = cities_data
@@ -26,7 +35,14 @@ class USApSCT:
         # TODO:
         # Done: Eliminate infeasible combinations de i -> k -> l -> j because travel time is violated
         # Not needed: Optimize second phase objective to minimize travel times
-        # Ask Armin why would the cuts not affect presolve
+        # Check cuts with presolve
+
+        # Heuristic inputs
+        self.min_city_supply_ranking_to_be_hub = min_city_supply_ranking_to_be_hub
+        self.min_latitude_to_be_hub = min_latitude_to_be_hub
+        self.max_latitude_to_be_hub = max_latitude_to_be_hub
+        self.min_longitude_to_be_hub = min_longitude_to_be_hub
+        self.max_longitude_to_be_hub = max_longitude_to_be_hub
 
         # Define sets starting with set_
         self.set_cities = self._get_set_cities(max_nodes)                                   # N
@@ -80,6 +96,9 @@ class USApSCT:
         self._add_constraint_latest_arrival_time_to_destination()
         self._add_constraint_latest_arrival_to_dest_within_limit()
 
+        # Heuristics for solving big instances
+        self._add_contraint_heuristic_hubs()
+
         # Apply cuts (not working yet)
         #self._add_constraint_eliminate_slowest_combinations()
         #self._add_constraint_eliminate_slowest_node_hub_assignment()
@@ -109,6 +128,14 @@ class USApSCT:
 
     
     def _get_set_cities(self, max_nodes: int) -> list:
+        """Returns the set of cities to work with given the max_nodes input
+
+        Args:
+            max_nodes (int): max number of nodes to work with.
+
+        Returns:
+            list:
+        """
         return list(cities_data.keys())[0: max_nodes]
 
     def _get_city_to_city_parameter(self, param_name: str) -> dict():
@@ -304,7 +331,7 @@ class USApSCT:
 
     def _add_constraint_flow_between_hubs_implies_link(self):
         """
-        The flow from every node goes completely to its hub
+        Flow from origin between hubs implies link between them
 
         * Y_ikl <= R_kl * s_i
         * Ɐ i ∈ N, Ɐ k ∈ N, l ∈ N: k != l & i != l
@@ -475,6 +502,59 @@ class USApSCT:
              ),
              name = "max arrival time within standard"
         )
+
+    def _add_contraint_heuristic_hubs(self):
+        """We limit here the possibility of some nodes to be hubs by:
+        - size of the city
+        - min/max longitude
+        - min/max latitude
+        - Z_ii = 0 
+        - Ɐ i ∈ Discarded Hubs
+        """
+        non_hubs_nodes = set()
+
+        # The hubs with ranking > min_city_supply_ranking_to_be_hub wont be hubs 
+        if self.min_city_supply_ranking_to_be_hub is not None:
+            supply_ids = [(val, key) for (key,val) in self.par_supply.items()]
+            supply_ids.sort(reverse=True) # sorted in descending order
+            hubs_to_remove = [id for ranking, (val, id) in enumerate(supply_ids) 
+                              if ranking + 1 > self.min_city_supply_ranking_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+
+        # Remove eastern nodes given by min longitude
+        if self.min_longitude_to_be_hub is not None:
+            hubs_to_remove = [id for id in self.set_cities 
+                              if self.cities_data[id].longitude < self.min_longitude_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+        
+        # Remove western nodes given by max longitude
+        if self.max_longitude_to_be_hub is not None:
+            hubs_to_remove = [id for id in self.set_cities 
+                              if self.cities_data[id].longitude > self.max_longitude_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+        
+        # Remove northern nodes given by max latitude
+        if self.max_latitude_to_be_hub is not None:
+            hubs_to_remove = [id for id in self.set_cities 
+                              if self.cities_data[id].latitude > self.max_latitude_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+        
+        # Remove southern nodes given by min latitude
+        if self.min_latitude_to_be_hub is not None:
+            hubs_to_remove = [id for id in self.set_cities 
+                              if self.cities_data[id].latitude < self.min_latitude_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+
+        self.model.addConstrs(
+            (self.var_assign_orig_hub[i,i] == 0
+             for i in non_hubs_nodes
+             ),
+             name = "heuristic discarded hubs"
+        )
+        
+        print(f"\nHeuristic to constraint hubs removed {len(non_hubs_nodes)} nodes: {non_hubs_nodes}")
+
+
 
     #########################################
     #                                       #
@@ -678,13 +758,12 @@ class USApSCT:
         """Saves the variables with values != 0 in a json file
         """
         
-        if self.model.Status != GRB.OPTIMAL:
-            return
-        
-        solution = dict()
-        
         def remove_0_values(d: dict()) -> dict():
             return { str(k): v for (k,v) in d.items() if v != 0}
+
+        solution = dict()
+
+        solution["MIPGap"] = self.model.getAttr("MIPGap")
         
         # Objective function value
         solution["OF_val"] = self.model.ObjVal
@@ -740,16 +819,25 @@ class USApSCT:
                          collection=origin_hub_flow_collection,
                          transfer=origin_hub_hub_flow_transfer,
                          distribution=origin_hub_destination_flow_distribution,
-                         plot_name=self.instance_name
+                         mip_gap=solution["MIPGap"],
+                         beta = self.par_max_arrival_time_h,
+                         size_proportional_to_flow=False
                          )
-
 
 
 
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApSCT(cities_data, max_nodes=45, number_hubs=None, max_time_h=25)
+    problem = USApSCT(cities_data, 
+                      max_nodes=51, 
+                      number_hubs=None, 
+                      max_time_h=25, 
+                      min_city_supply_ranking_to_be_hub=20,
+                      min_latitude_to_be_hub=37,
+                      max_latitude_to_be_hub=41.02,
+                      min_longitude_to_be_hub=28,
+                      max_longitude_to_be_hub=40)
     problem.solve()
     problem.save_solution()
     problem.plot_solution()

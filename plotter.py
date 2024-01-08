@@ -29,7 +29,8 @@ def plot_map(cities_data: Dict[int, City],
              collection: dict(), 
              transfer: dict(), 
              distribution: dict(),
-             plot_name: str,
+             mip_gap: float,
+             beta: float,
              size_proportional_to_flow: bool = False):
     """Plots the map and optionally the solution
 
@@ -40,7 +41,8 @@ def plot_map(cities_data: Dict[int, City],
         collection (dict): collection flow: (i,k) -> flow
         transfer (dict): transfer flow: (i,k,l) -> flow
         distribution (dict): distribution flow (i,l,j) -> flow
-        plot_name (str): to save this figure
+        mip_gap (float): mip gap
+        beta (float): max delivery time between origin and destination
         size_proportional_to_flow (bool): to see the map and the volumes required to transport
     """
     
@@ -49,7 +51,8 @@ def plot_map(cities_data: Dict[int, City],
     world = world.query("name == 'Turkey'")
     ax = world.plot(color="whitesmoke", edgecolor="black", linewidth=1.5)
     ax.figure.set_size_inches(14,6)
-    plt.title(plot_name)
+
+    plt.title(f"N={len(cities_considered)}, β={beta}, MIPGap={round(mip_gap*100,2)}%")
     plt.ylabel("Latitude")
     plt.xlabel("Longitude")
 
@@ -145,6 +148,7 @@ def plot_map(cities_data: Dict[int, City],
                  zorder=10)
     
     # Save plot
+    plot_name = "n" + str(len(cities_considered)) + "_t" + str(beta)
     filepath = os.path.join(FOLDER, plot_name + ".png")
     plt.savefig(filepath)
     print(f"\nPlot saved in {filepath}")
