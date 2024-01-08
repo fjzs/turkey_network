@@ -22,6 +22,7 @@ class USApSCT:
                  max_nodes:int = 81, 
                  number_hubs:int = 1, 
                  max_time_h:int = 30,
+                 hub_to_hub_cost_factor:int = 8,
                  min_city_supply_ranking_to_be_hub:int = 81,
                  min_latitude_to_be_hub: float = 36,
                  max_latitude_to_be_hub: float = 45,
@@ -36,6 +37,7 @@ class USApSCT:
         # Done: Eliminate infeasible combinations de i -> k -> l -> j because travel time is violated
         # Not needed: Optimize second phase objective to minimize travel times
         # Check cuts with presolve
+        # https://github.com/csymvoul/python-structure-template
 
         # Define sets starting with set_
         self.set_cities = self._get_set_cities(max_nodes)                                   # N
@@ -51,7 +53,7 @@ class USApSCT:
         self.par_speed_planes_kph = 650                                                     # v_a
         self.par_travel_time_truck_h = self._get_travel_time(self.par_speed_trucks_kph)     # tt_ij
         self.par_travel_time_plane_h = self._get_travel_time(self.par_speed_planes_kph)     # tp_ij
-        self.par_hub_to_hub_cost_factor = 8                                                 # α
+        self.par_hub_to_hub_cost_factor = hub_to_hub_cost_factor                            # α
         self.par_number_hubs = number_hubs                                                  # p
         self.par_max_arrival_time_h = max_time_h                                            # β
         
@@ -66,6 +68,7 @@ class USApSCT:
         # Create optimization model
         self.instance_name = "n" + str(len(self.set_cities)).zfill(2)
         self.instance_name += "_t" + str(self.par_max_arrival_time_h).zfill(2)
+        self.instance_name += "_a" + str(self.par_hub_to_hub_cost_factor).zfill(2)
         self.instance_name += "_h" + str(len(self.heuristic_non_hubs_nodes)).zfill(2) 
         print(f"Instance name: {self.instance_name}")
         self.model = gp.Model('USApSCT')
@@ -121,7 +124,7 @@ class USApSCT:
         self._set_objective_function()
 
         # Define a start value for some variables to speed up the process
-        self._set_start_values()
+        #self._set_start_values()
 
         self.model.update()
 
@@ -856,6 +859,7 @@ class USApSCT:
                          transfer=origin_hub_hub_flow_transfer,
                          distribution=origin_hub_destination_flow_distribution,
                          beta=self.par_max_arrival_time_h,
+                         alpha=self.par_hub_to_hub_cost_factor,
                          non_hubs_nodes=self.heuristic_non_hubs_nodes,
                          size_proportional_to_flow=True,
                          draw_city_names=False
@@ -869,8 +873,9 @@ if __name__ == "__main__":
     problem = USApSCT(cities_data, 
                       max_nodes=40,
                       number_hubs=None,
-                      max_time_h=25, 
-                      min_city_supply_ranking_to_be_hub=81,
+                      max_time_h=30,
+                      hub_to_hub_cost_factor=8, 
+                      min_city_supply_ranking_to_be_hub=20,
                       min_latitude_to_be_hub=37,
                       max_latitude_to_be_hub=41.02,
                       min_longitude_to_be_hub=28,
