@@ -757,9 +757,9 @@ class USApSCT:
     def save_solution(self):
         """Saves the variables with values != 0 in a json file
         """
-        
+        tolerance = float("1.0e-10")
         def remove_0_values(d: dict()) -> dict():
-            return { str(k): v for (k,v) in d.items() if v != 0}
+            return { str(k): v for (k,v) in d.items() if v > tolerance}
 
         solution = dict()
 
@@ -830,9 +830,9 @@ if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
     problem = USApSCT(cities_data, 
-                      max_nodes=51, 
+                      max_nodes=81, 
                       number_hubs=None, 
-                      max_time_h=25, 
+                      max_time_h=40, 
                       min_city_supply_ranking_to_be_hub=20,
                       min_latitude_to_be_hub=37,
                       max_latitude_to_be_hub=41.02,
