@@ -37,13 +37,6 @@ class USApSCT:
         # Not needed: Optimize second phase objective to minimize travel times
         # Check cuts with presolve
 
-        # Heuristic inputs
-        self.min_city_supply_ranking_to_be_hub = min_city_supply_ranking_to_be_hub
-        self.min_latitude_to_be_hub = min_latitude_to_be_hub
-        self.max_latitude_to_be_hub = max_latitude_to_be_hub
-        self.min_longitude_to_be_hub = min_longitude_to_be_hub
-        self.max_longitude_to_be_hub = max_longitude_to_be_hub
-
         # Define sets starting with set_
         self.set_cities = self._get_set_cities(max_nodes)                                   # N
 
@@ -62,10 +55,18 @@ class USApSCT:
         self.par_number_hubs = number_hubs                                                  # p
         self.par_max_arrival_time_h = max_time_h                                            # β
         
+        # Heuristic inputs
+        self.min_city_supply_ranking_to_be_hub = min_city_supply_ranking_to_be_hub
+        self.min_latitude_to_be_hub = min_latitude_to_be_hub
+        self.max_latitude_to_be_hub = max_latitude_to_be_hub
+        self.min_longitude_to_be_hub = min_longitude_to_be_hub
+        self.max_longitude_to_be_hub = max_longitude_to_be_hub
+        self.heuristic_non_hubs_nodes = self._get_heuristic_non_hubs_nodes()
+
         # Create optimization model
-        self.instance_name = "USApSCT_n" + str(max_nodes)
-        self.instance_name += "_p" + ("None" if self.par_number_hubs is None else str(self.par_number_hubs))
-        self.instance_name += "_t" + str(self.par_max_arrival_time_h)
+        self.instance_name = "n" + str(len(self.set_cities)).zfill(2)
+        self.instance_name += "_t" + str(self.par_max_arrival_time_h).zfill(2)
+        self.instance_name += "_h" + str(len(self.heuristic_non_hubs_nodes)).zfill(2) 
         print(f"Instance name: {self.instance_name}")
         self.model = gp.Model('USApSCT')
         
@@ -97,7 +98,7 @@ class USApSCT:
         self._add_constraint_latest_arrival_to_dest_within_limit()
 
         # Heuristics for solving big instances
-        self._add_contraint_heuristic_hubs()
+        self._add_contraint_heuristic_non_hubs()
 
         # Apply cuts (not working yet)
         #self._add_constraint_eliminate_slowest_combinations()
@@ -117,7 +118,10 @@ class USApSCT:
         self._add_constraint_OF_transport_distribution_cost()
         self._add_constraint_OF_links_cost()
         # Setting the objecting function in the model
-        self.__set_objective_function__()
+        self._set_objective_function()
+
+        # Define a start value for some variables to speed up the process
+        self._set_start_values()
 
         self.model.update()
 
@@ -137,6 +141,54 @@ class USApSCT:
             list:
         """
         return list(cities_data.keys())[0: max_nodes]
+
+    def _get_heuristic_non_hubs_nodes(self) -> set:
+        """We limit here the possibility of some nodes to be hubs by
+        - size of the city
+        - min/max longitude
+        - min/max latitude
+
+        Returns:
+            list: the non hubs nodes
+        """
+        non_hubs_nodes = set()
+
+        # The hubs with ranking > min_city_supply_ranking_to_be_hub wont be hubs 
+        if self.min_city_supply_ranking_to_be_hub is not None:
+            supply_ids = [(val, key) for (key,val) in self.par_supply.items()]
+            supply_ids.sort(reverse=True) # sorted in descending order
+            hubs_to_remove = [id for ranking, (val, id) in enumerate(supply_ids) 
+                              if ranking + 1 > self.min_city_supply_ranking_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+
+        # Remove eastern nodes given by min longitude
+        if self.min_longitude_to_be_hub is not None:
+            hubs_to_remove = [id for id in self.set_cities 
+                              if self.cities_data[id].longitude < self.min_longitude_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+        
+        # Remove western nodes given by max longitude
+        if self.max_longitude_to_be_hub is not None:
+            hubs_to_remove = [id for id in self.set_cities 
+                              if self.cities_data[id].longitude > self.max_longitude_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+        
+        # Remove northern nodes given by max latitude
+        if self.max_latitude_to_be_hub is not None:
+            hubs_to_remove = [id for id in self.set_cities 
+                              if self.cities_data[id].latitude > self.max_latitude_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+        
+        # Remove southern nodes given by min latitude
+        if self.min_latitude_to_be_hub is not None:
+            hubs_to_remove = [id for id in self.set_cities 
+                              if self.cities_data[id].latitude < self.min_latitude_to_be_hub]
+            non_hubs_nodes.update(hubs_to_remove)
+        
+        print(f"\nHeuristic will remove {len(non_hubs_nodes)} as potential hubs: {non_hubs_nodes}")
+
+        return non_hubs_nodes
+
 
     def _get_city_to_city_parameter(self, param_name: str) -> dict():
         param = dict() # (i,j) -> parameter_ij
@@ -503,57 +555,18 @@ class USApSCT:
              name = "max arrival time within standard"
         )
 
-    def _add_contraint_heuristic_hubs(self):
-        """We limit here the possibility of some nodes to be hubs by:
-        - size of the city
-        - min/max longitude
-        - min/max latitude
+    def _add_contraint_heuristic_non_hubs(self):
+        """We limit here the possibility of some nodes to be hubs by the precomputed parameter
+        heuristic_non_hubs_nodes
         - Z_ii = 0 
         - Ɐ i ∈ Discarded Hubs
         """
-        non_hubs_nodes = set()
-
-        # The hubs with ranking > min_city_supply_ranking_to_be_hub wont be hubs 
-        if self.min_city_supply_ranking_to_be_hub is not None:
-            supply_ids = [(val, key) for (key,val) in self.par_supply.items()]
-            supply_ids.sort(reverse=True) # sorted in descending order
-            hubs_to_remove = [id for ranking, (val, id) in enumerate(supply_ids) 
-                              if ranking + 1 > self.min_city_supply_ranking_to_be_hub]
-            non_hubs_nodes.update(hubs_to_remove)
-
-        # Remove eastern nodes given by min longitude
-        if self.min_longitude_to_be_hub is not None:
-            hubs_to_remove = [id for id in self.set_cities 
-                              if self.cities_data[id].longitude < self.min_longitude_to_be_hub]
-            non_hubs_nodes.update(hubs_to_remove)
-        
-        # Remove western nodes given by max longitude
-        if self.max_longitude_to_be_hub is not None:
-            hubs_to_remove = [id for id in self.set_cities 
-                              if self.cities_data[id].longitude > self.max_longitude_to_be_hub]
-            non_hubs_nodes.update(hubs_to_remove)
-        
-        # Remove northern nodes given by max latitude
-        if self.max_latitude_to_be_hub is not None:
-            hubs_to_remove = [id for id in self.set_cities 
-                              if self.cities_data[id].latitude > self.max_latitude_to_be_hub]
-            non_hubs_nodes.update(hubs_to_remove)
-        
-        # Remove southern nodes given by min latitude
-        if self.min_latitude_to_be_hub is not None:
-            hubs_to_remove = [id for id in self.set_cities 
-                              if self.cities_data[id].latitude < self.min_latitude_to_be_hub]
-            non_hubs_nodes.update(hubs_to_remove)
-
         self.model.addConstrs(
             (self.var_assign_orig_hub[i,i] == 0
-             for i in non_hubs_nodes
+             for i in self.heuristic_non_hubs_nodes
              ),
              name = "heuristic discarded hubs"
         )
-        
-        print(f"\nHeuristic to constraint hubs removed {len(non_hubs_nodes)} nodes: {non_hubs_nodes}")
-
 
 
     #########################################
@@ -733,7 +746,7 @@ class USApSCT:
             name = "OF_links_cost"
         )
     
-    def __set_objective_function__(self):
+    def _set_objective_function(self):
         self.model.setObjective(
             self.var_OF_links_cost +
             self.var_OF_location_cost + 
@@ -742,6 +755,29 @@ class USApSCT:
             self.var_OF_transport_transfer_cost,
             sense = GRB.MINIMIZE
         )
+
+    def _set_start_values(self):
+        """Here we set some initial values to speed up finding a feasible solution
+        """
+        # For each potential node that can be a hub, set it as a hub
+        # For each non-hub node, assign it to the closest hub
+        
+        if self.heuristic_non_hubs_nodes is not None:
+            print(f"\nApplying heuristic start values")
+            hub_ids = set(self.set_cities.copy()) - self.heuristic_non_hubs_nodes
+            for k in hub_ids:
+                self.var_assign_orig_hub[k,k].Start = 1.0
+            print(f"Hubs are: {list(hub_ids)}")
+            
+            # Assign these cities to the closest hub
+            print("Assignment to hubs:")
+            for i in self.heuristic_non_hubs_nodes:
+                time_hub = [(self.par_travel_time_truck_h[(i,k)], k) for k in hub_ids]
+                time_hub.sort()
+                k = time_hub[0][1]
+                self.var_assign_orig_hub[i,k].Start = 1.0
+                print(f"\tNode {i} assigned to Hub {k}")
+
 
     def solve(self):
         print("\n\n\nSOLVING...\n")
@@ -819,9 +855,10 @@ class USApSCT:
                          collection=origin_hub_flow_collection,
                          transfer=origin_hub_hub_flow_transfer,
                          distribution=origin_hub_destination_flow_distribution,
-                         mip_gap=solution["MIPGap"],
-                         beta = self.par_max_arrival_time_h,
-                         size_proportional_to_flow=False
+                         beta=self.par_max_arrival_time_h,
+                         non_hubs_nodes=self.heuristic_non_hubs_nodes,
+                         size_proportional_to_flow=True,
+                         draw_city_names=False
                          )
 
 
@@ -830,10 +867,10 @@ if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
     problem = USApSCT(cities_data, 
-                      max_nodes=81, 
-                      number_hubs=None, 
-                      max_time_h=40, 
-                      min_city_supply_ranking_to_be_hub=20,
+                      max_nodes=40,
+                      number_hubs=None,
+                      max_time_h=25, 
+                      min_city_supply_ranking_to_be_hub=81,
                       min_latitude_to_be_hub=37,
                       max_latitude_to_be_hub=41.02,
                       min_longitude_to_be_hub=28,

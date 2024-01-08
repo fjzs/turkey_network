@@ -29,21 +29,23 @@ def plot_map(cities_data: Dict[int, City],
              collection: dict(), 
              transfer: dict(), 
              distribution: dict(),
-             mip_gap: float,
              beta: float,
-             size_proportional_to_flow: bool = False):
+             non_hubs_nodes: set,
+             size_proportional_to_flow: bool,
+             draw_city_names: bool):
     """Plots the map and optionally the solution
 
     Args:
-        cities_data (dict): data of the cities
-        cities_considered (list): cities to plot
-        hubs_ids (set): ids of the hubs
-        collection (dict): collection flow: (i,k) -> flow
-        transfer (dict): transfer flow: (i,k,l) -> flow
-        distribution (dict): distribution flow (i,l,j) -> flow
-        mip_gap (float): mip gap
-        beta (float): max delivery time between origin and destination
-        size_proportional_to_flow (bool): to see the map and the volumes required to transport
+        - cities_data (dict): data of the cities
+        - cities_considered (list): cities to plot
+        - hubs_ids (set): ids of the hubs
+        - collection (dict): collection flow: (i,k) -> flow
+        - transfer (dict): transfer flow: (i,k,l) -> flow
+        - distribution (dict): distribution flow (i,l,j) -> flow
+        - beta (float): max delivery time between origin and destination
+        - non_hubs_nodes (list): heuristic which discarded some nodes to be hubs
+        - size_proportional_to_flow (bool): to see the map and the volumes required to transport
+        - draw_city_names (bool)
     """
     
     # Print map
@@ -52,7 +54,7 @@ def plot_map(cities_data: Dict[int, City],
     ax = world.plot(color="whitesmoke", edgecolor="black", linewidth=1.5)
     ax.figure.set_size_inches(14,6)
 
-    plt.title(f"N={len(cities_considered)}, β={beta}, MIPGap={round(mip_gap*100,2)}%")
+    plt.title(f"N={len(cities_considered)}, β={beta}[h], Hubs discarded by heuristic={len(non_hubs_nodes)}")
     plt.ylabel("Latitude")
     plt.xlabel("Longitude")
 
@@ -74,27 +76,33 @@ def plot_map(cities_data: Dict[int, City],
         city = cities_data[i]
         
         # Plotting a solution
-        if hubs_ids is not None:
-            plt.annotate(str(i), (city.longitude-0.1, city.latitude-0.1), color="white", size=10, zorder=100)
-            if i in hubs_ids:
-                plt.scatter(cities_data[i].longitude, cities_data[i].latitude, s=150, marker='s', color='blue', zorder=80)
-            else:
-                plt.scatter(cities_data[i].longitude + 0.05, cities_data[i].latitude, s=160, marker="o", color="red", zorder=80)
+        # if hubs_ids is not None:
+        #     plt.annotate(str(i), (city.longitude-0.1, city.latitude-0.1), color="white", size=10, zorder=100)
+        #     if i in hubs_ids:
+        #         plt.scatter(cities_data[i].longitude, cities_data[i].latitude, s=150, marker='s', color='blue', zorder=80)
+        #     else:
+        #         node_color = "red" if i in non_hubs_nodes else "green"
+        #         plt.scatter(cities_data[i].longitude + 0.05, cities_data[i].latitude, s=160, marker="o", color=node_color, zorder=80)
         
-        # Plotting the demand/supply sizes
-        elif size_proportional_to_flow:
+        # Plotting proportional to volume per node
+        
+        size_ball = 100
+        if size_proportional_to_flow:
             size_ball = _get_size_given_min_max(supply_per_city[i], min_supply, max_supply, min_size=5, max_size=500)
-            plt.scatter(cities_data[i].longitude, 
-                        cities_data[i].latitude, 
-                        s=size_ball, 
-                        marker="o", 
-                        color="red", 
-                        zorder=80)
+        
+        node_color = "blue" if i in hubs_ids else ("red" if i in non_hubs_nodes else "green")
+        plt.scatter(cities_data[i].longitude, 
+                    cities_data[i].latitude, 
+                    s=size_ball, 
+                    marker="o", 
+                    color=node_color, 
+                    zorder=80)
+        
+        if draw_city_names:
             plt.annotate(str(city.name)[0:3], (city.longitude, city.latitude), color="black", size=10, zorder=100)
         
         # Plotting just the numbers
-        else:
-            plt.scatter(cities_data[i].longitude + 0.05, cities_data[i].latitude, s=160, marker="o", color="red", zorder=80)
+        #plt.scatter(cities_data[i].longitude + 0.05, cities_data[i].latitude, s=160, marker="o", color="red", zorder=80)
 
     # Compute the total flow between each pair of cities (sum (i,j) and (j,i) in the same arc)
     total_flow = dict() # (i,j) -> flow
@@ -148,7 +156,7 @@ def plot_map(cities_data: Dict[int, City],
                  zorder=10)
     
     # Save plot
-    plot_name = "n" + str(len(cities_considered)) + "_t" + str(beta)
+    plot_name = "n" + str(len(cities_considered)) + "_t" + str(beta) + "_h" + str(len(non_hubs_nodes)).zfill(2)
     filepath = os.path.join(FOLDER, plot_name + ".png")
     plt.savefig(filepath)
     print(f"\nPlot saved in {filepath}")
