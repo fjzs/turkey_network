@@ -6,7 +6,7 @@ import plotter
 import utils
 
 
-class USApHMP:
+class USAPHMP:
     """This class implements the uncapacitated, single allocation p-hub median problem from
     ANDREAS T. ERNST and MOHAN KRISHNAMOORTHY (1996)
     """

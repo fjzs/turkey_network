@@ -5,7 +5,7 @@ from gurobipy import GRB
 import plotter
 import utils
 
-class USApSCT:
+class USAPSCT:
     """This class implements the uncapacitated, single allocation p-hub set covering with
     time service constraints, a mixture between:
     - Ernst, A.T., Krishnamoorthy, M. (1996)
@@ -20,17 +20,16 @@ class USApSCT:
 
     def __init__(self, cities_data: Dict[int, City], 
                  max_nodes:int = 81, 
-                 number_hubs:int = 1, 
-                 max_time_h:int = 30,
-                 hub_to_hub_cost_factor:int = 8,
-                 min_city_supply_ranking_to_be_hub:int = 81,
+                 max_arrival_time_h:int = 30,
+                 economy_of_scale_factor:float = 0.9,
+                 top_k_cities_for_hub:int = 20,
                  min_latitude_to_be_hub: float = 36,
                  max_latitude_to_be_hub: float = 45,
                  min_longitude_to_be_hub: float = 26,
                  max_longitude_to_be_hub: float = 45
                  ):
         assert 2 <= max_nodes <= 81
-        assert 1 <= max_time_h
+        assert 1 <= max_arrival_time_h
         self.cities_data = cities_data
         
         # TODO:
@@ -49,16 +48,13 @@ class USApSCT:
         self.par_fixed_link_cost = self._get_city_to_city_parameter("fixed_link_cost")      # f_ij
         self.par_supply = self._get_node_supply()                                           # s_i
         self.par_unit_cost_per_km_flow = 1                                                  # c
-        self.par_speed_trucks_kph = 60                                                      # v_t
-        self.par_speed_planes_kph = 650                                                     # v_a
-        self.par_travel_time_truck_h = self._get_travel_time(self.par_speed_trucks_kph)     # tt_ij
-        self.par_travel_time_plane_h = self._get_travel_time(self.par_speed_planes_kph)     # tp_ij
-        self.par_hub_to_hub_cost_factor = hub_to_hub_cost_factor                            # α
-        self.par_number_hubs = number_hubs                                                  # p
-        self.par_max_arrival_time_h = max_time_h                                            # β
+        self.par_speed_trucks_kph = 60                                                      # v
+        self.par_travel_time_truck_h = self._get_travel_time(self.par_speed_trucks_kph)     # t_ij
+        self.par_economy_scale_factor = economy_of_scale_factor                             # α
+        self.par_max_arrival_time_h = max_arrival_time_h                                    # β
         
         # Heuristic inputs
-        self.min_city_supply_ranking_to_be_hub = min_city_supply_ranking_to_be_hub
+        self.top_k_cities_for_hub = top_k_cities_for_hub
         self.min_latitude_to_be_hub = min_latitude_to_be_hub
         self.max_latitude_to_be_hub = max_latitude_to_be_hub
         self.min_longitude_to_be_hub = min_longitude_to_be_hub
@@ -68,8 +64,8 @@ class USApSCT:
         # Create optimization model
         self.instance_name = "n" + str(len(self.set_cities)).zfill(2)
         self.instance_name += "_t" + str(self.par_max_arrival_time_h).zfill(2)
-        self.instance_name += "_a" + str(self.par_hub_to_hub_cost_factor).zfill(2)
-        self.instance_name += "_h" + str(len(self.heuristic_non_hubs_nodes)).zfill(2) 
+        self.instance_name += "_a" + str(self.par_economy_scale_factor).zfill(2)
+        self.instance_name += "_k" + str(self.top_k_cities_for_hub).zfill(2) 
         print(f"Instance name: {self.instance_name}")
         self.model = gp.Model('USApSCT')
         
@@ -79,15 +75,13 @@ class USApSCT:
         self.var_flow_orig_hub_hub = self._add_var_flow_orig_hub_hub()                      # Y_ikl
         self.var_flow_orig_hub_dest = self._add_var_flow_orig_hub_dest()                    # X_ilj
         self.var_link_hubs = self._add_var_link_hubs()                                      # R_kl
-        self.var_departure_from_hub_to_hub = self._add_var_departure_from_hub_to_hub()      # DHH_k
-        self.var_departure_from_hub_to_dest = self._add_var_departure_from_hub_to_dest()    # DHD_k
+        self.var_departure_from_hub_to_hub = self._add_var_departure_from_hub_to_hub()      # Dh_k
+        self.var_departure_from_hub_to_dest = self._add_var_departure_from_hub_to_dest()    # Dc_k
         self.var_arrival_to_dest = self._add_var_arrival_to_dest()                          # A_j
 
         # Create constraints
-        self._add_constraint_locate_hubs()
         self._add_constraint_assign_node_to_single_hub()
         self._add_constraint_hub_implication()
-        #self._add_constraint_hub_has_minimum_customers()
         self._add_constraint_flow_from_source()
         self._add_constraint_flow_between_hubs_implies_link()
         self._add_constraint_conservation_of_flow_at_hub_from_origin()
@@ -95,7 +89,7 @@ class USApSCT:
         self._add_constraint_flow_origin_destination_covered()
         self._add_constraint_link_between_hubs_implies_hubs()
         self._add_constraint_departure_from_hub_to_hub_waits_customers()
-        self._add_constraint_departure_from_hub_to_destination_waits_for_hub_airplanes()
+        self._add_constraint_departure_from_hub_to_destination_waits_for_hub_trucks()
         self._add_constraint_departure_from_hub_to_destination_waits_for_customer_trucks()
         self._add_constraint_latest_arrival_time_to_destination()
         self._add_constraint_latest_arrival_to_dest_within_limit()
@@ -134,16 +128,16 @@ class USApSCT:
         
 
     
-    def _get_set_cities(self, max_nodes: int) -> list:
+    def _get_set_cities(self, max_nodes: int) -> set:
         """Returns the set of cities to work with given the max_nodes input
 
         Args:
             max_nodes (int): max number of nodes to work with.
 
         Returns:
-            list:
+            set:
         """
-        return list(cities_data.keys())[0: max_nodes]
+        return set(list(cities_data.keys())[0: max_nodes])
 
     def _get_heuristic_non_hubs_nodes(self) -> set:
         """We limit here the possibility of some nodes to be hubs by
@@ -155,13 +149,19 @@ class USApSCT:
             list: the non hubs nodes
         """
         non_hubs_nodes = set()
-
+        print("\nApplying heuristic:")
         # The hubs with ranking > min_city_supply_ranking_to_be_hub wont be hubs 
-        if self.min_city_supply_ranking_to_be_hub is not None:
-            supply_ids = [(val, key) for (key,val) in self.par_supply.items()]
+        if self.top_k_cities_for_hub is not None:
+            supply_ids = [(sum(city.flow_goods_to_other_cities.values()), id) for id, city in self.cities_data.items()]
             supply_ids.sort(reverse=True) # sorted in descending order
-            hubs_to_remove = [id for ranking, (val, id) in enumerate(supply_ids) 
-                              if ranking + 1 > self.min_city_supply_ranking_to_be_hub]
+            print(f"Ordered cities in total supply:")
+            for i, (val,id) in enumerate(supply_ids):
+                name = self.cities_data[id].name
+                print(f"# {i+1} has id {id}: {name} has total supply of {val}")
+
+            # Remove every node which is not in the Top K
+            hubs_to_remove = supply_ids[self.top_k_cities_for_hub:]
+            hubs_to_remove = [id for (supply,id) in hubs_to_remove if id in self.set_cities]
             non_hubs_nodes.update(hubs_to_remove)
 
         # Remove eastern nodes given by min longitude
@@ -188,7 +188,7 @@ class USApSCT:
                               if self.cities_data[id].latitude < self.min_latitude_to_be_hub]
             non_hubs_nodes.update(hubs_to_remove)
         
-        print(f"\nHeuristic will remove {len(non_hubs_nodes)} as potential hubs: {non_hubs_nodes}")
+        print(f"\nHeuristic will remove {len(non_hubs_nodes)} nodes as potential hubs: {non_hubs_nodes}")
 
         return non_hubs_nodes
 
@@ -294,16 +294,16 @@ class USApSCT:
         return self.model.addVars(N, N, lb=0, vtype = GRB.BINARY, name="R")
 
     def _add_var_departure_from_hub_to_hub(self):
-        """DHH_k: departure time from hub k for transportation to other hubs
+        """D^h_k: departure time from hub k for transportation to other hubs
         """
         N = self.set_cities
-        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time_h, vtype = GRB.CONTINUOUS, name="DHH")
+        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time_h, vtype = GRB.CONTINUOUS, name="Dh")
 
     def _add_var_departure_from_hub_to_dest(self):
-        """DHD_k: departure time from hub k for transportation to destinations
+        """D^c_k: departure time from hub k for transportation to destinations
         """
         N = self.set_cities
-        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time_h, vtype = GRB.CONTINUOUS, name="DHD")
+        return self.model.addVars(N, lb=0, ub=self.par_max_arrival_time_h, vtype = GRB.CONTINUOUS, name="Dc")
 
     def _add_var_arrival_to_dest(self):
         """A_j: arrival time to destination j
@@ -318,18 +318,6 @@ class USApSCT:
     #                                       #
     #########################################
 
-
-    def _add_constraint_locate_hubs(self):
-        """
-        We need to locate the predefined number of hubs
-
-        * Σ_i Z_ii = p
-        """
-        N = self.set_cities
-        if self.par_number_hubs is not None:
-            self.model.addConstr(
-                gp.quicksum(self.var_assign_orig_hub[i, i] for i in N) == self.par_number_hubs,
-                name = "locate p hubs")
 
     def _add_constraint_assign_node_to_single_hub(self):
         """
@@ -355,21 +343,6 @@ class USApSCT:
             (self.var_assign_orig_hub[i,k] <= self.var_assign_orig_hub[k,k] 
             for i in N for k in N if i != k), 
             name = "node to hub implies hub")
-
-    def _add_constraint_hub_has_minimum_customers(self):
-        """
-        Each hub must have at least 1 customer
-
-        * Z_kk <= Σ_i (i != k) Z_ik
-        * Ɐ k ∈ N
-        """
-        N = self.set_cities
-        self.model.addConstrs(
-            (self.var_assign_orig_hub[k,k] 
-            <= 
-            gp.quicksum(self.var_assign_orig_hub[i,k] for i in N if i != k)
-            for k in N), 
-            name = "hub has minimum number of customers")
 
     def _add_constraint_flow_from_source(self):
         """
@@ -469,7 +442,7 @@ class USApSCT:
         A vehicle departuring from hub k to other hubs must wait cargo from
         its customers (nodes assigned to k) travelling by truck
 
-        * DHH_k >= tt_ik * Z_ik
+        * Dh_k >= t_ik * Z_ik
         * Ɐ i ∈ N, Ɐ k ∈ N: i != k
         """
         N = self.set_cities
@@ -482,13 +455,13 @@ class USApSCT:
              name = "departure from hub to hub waits for its customers"
         )
     
-    def _add_constraint_departure_from_hub_to_destination_waits_for_hub_airplanes(self):
+    def _add_constraint_departure_from_hub_to_destination_waits_for_hub_trucks(self):
         """
         The departuring time from hub l to its customers (DHC_l) must
-        wait for incoming air cargo from other hubs k DHH_k to consolidate cargo.
+        wait for incoming cargo from other hubs k Dh_k to consolidate cargo.
         
-        * Original non-linear: DHD_l >= (DHH_k + tp_kl) * R_kl
-        * Linearized: DHD_l >= DHH_k + tp_kl - M(1 - R_kl)
+        * Original non-linear: Dc_l >= (Dh_k + t_kl*α) * R_kl
+        * Linearized: Dc_l >= Dh_k + t_kl*α - M(1 - R_kl)
         * Where M is a sufficient big number, in this case: M = β (max delivery time)
         * Ɐ k ∈ N, Ɐ l ∈ N
         """
@@ -496,20 +469,20 @@ class USApSCT:
         self.model.addConstrs(
             (self.var_departure_from_hub_to_dest[l] >=
              self.var_departure_from_hub_to_hub[k] + 
-             self.par_travel_time_plane_h[k,l] - 
+             self.par_travel_time_truck_h[k,l] * self.par_economy_scale_factor -
              self.par_max_arrival_time_h*(1 - self.var_link_hubs[k,l])
              for k in N for l in N
              ),
-             name = "departure from hub to destination waits for air cargo"
+             name = "departure from hub to destination waits for hub truck"
         )
     
     def _add_constraint_departure_from_hub_to_destination_waits_for_customer_trucks(self):
         """
-        The departuring time from hub l to its customers j (DHC_l) must
+        The departuring time from hub l to its customers j (Dc_l) must
         wait for incoming truck cargo from its customers to consolidate. This is a 
         special case when there is only a single hub in the network.
         
-        * DHD_l >= tt_jl * Z_jl
+        * Dc_l >= t_jl * Z_jl
         * Ɐ j ∈ N, Ɐ l ∈ N
         """
         N = self.set_cities
@@ -524,11 +497,11 @@ class USApSCT:
 
     def _add_constraint_latest_arrival_time_to_destination(self):
         """
-        The latest arrival time to destination j depends on the latest airplane
-        arriving to hub l
+        The latest arrival time to destination j depends on the latest truck
+        arriving from hub l
 
-        * Original non-linear: A_j >= (DHD_l + tt_lj) * Z_jl
-        * Linearized: A_j >= DHD_l + tt_lj - M(1 - Z_jl)
+        * Original non-linear: A_j >= (Dc_l + t_lj) * Z_jl
+        * Linearized: A_j >= Dc_l + t_lj - M(1 - Z_jl)
         * Where M is a sufficient big number, in this case: M = β (max delivery time)
         * Ɐ j ∈ N, Ɐ l ∈ N
         """
@@ -540,7 +513,7 @@ class USApSCT:
              self.par_max_arrival_time_h*(1 - self.var_assign_orig_hub[j,l])
              for j in N for l in N
              ),
-             name = "departure from hub to destination waits for hub to hub planes"
+             name = "departure from hub to destination waits for hub to hub trucks"
         )
 
     def _add_constraint_latest_arrival_to_dest_within_limit(self):
@@ -578,43 +551,43 @@ class USApSCT:
     #                                       #
     #########################################
     
-    def _add_constraint_eliminate_slowest_combinations(self):
-        """
-        There are some combinations of routes that are infeasible because
-        they are too slow for the given time standard β. These are such
-        routes i -> k -> l -> j, where k and l are hubs. The condition is:
+    # def _add_constraint_eliminate_slowest_combinations(self):
+    #     """
+    #     There are some combinations of routes that are infeasible because
+    #     they are too slow for the given time standard β. These are such
+    #     routes i -> k -> l -> j, where k and l are hubs. The condition is:
 
-        * if tt_ik + tp_kl + tt_lj > β
-        * then: Z_ik + R_kl + Z_jl <= 2
-        * Ɐ i ∈ N, Ɐ k ∈ N, Ɐ l ∈ N, Ɐ j ∈ N: k != l, i != j
-        """
-        N = self.set_cities
-        tt = self.par_travel_time_truck_h
-        tp = self.par_travel_time_plane_h
-        beta = self.par_max_arrival_time_h
-        infeasible_combinations = []
-        print(f"\nApplying cut: detecting tt_ik + tp_kl + tt_lj > β")
-        for i in N:
-            for k in N:
-                for l in N:
-                    for j in N:
-                        if (k != l) and (i != j):
-                            time_iklj = tt[i,k] + tp[k,l] + tp[l,j]
-                            if time_iklj > beta:
-                                infeasible_combinations.append((i,k,l,j))
-                                print(f"\ttime through {i,k,l,j} = {time_iklj} > {beta}")
-        print(f"\tTotal number of this cut: {len(infeasible_combinations)}")
+    #     * if tt_ik + tp_kl + tt_lj > β
+    #     * then: Z_ik + R_kl + Z_jl <= 2
+    #     * Ɐ i ∈ N, Ɐ k ∈ N, Ɐ l ∈ N, Ɐ j ∈ N: k != l, i != j
+    #     """
+    #     N = self.set_cities
+    #     tt = self.par_travel_time_truck_h
+    #     tp = self.par_travel_time_plane_h
+    #     beta = seleconomy_scale_factor
+    #     infeasible_combinations = []
+    #     print(f"\nApplying cut: detecting tt_ik + tp_kl + tt_lj > β")
+    #     for i in N:
+    #         for k in N:
+    #             for l in N:
+    #                 for j in N:
+    #                     if (k != l) and (i != j):
+    #                         time_iklj = tt[i,k] + tp[k,l] + tp[l,j]
+    #                         if time_iklj > beta:
+    #                             infeasible_combinations.append((i,k,l,j))
+    #                             print(f"\ttime through {i,k,l,j} = {time_iklj} > {beta}")
+    #     print(f"\tTotal number of this cut: {len(infeasible_combinations)}")
 
-        self.model.addConstrs(
-            (self.var_assign_orig_hub[i,k] +
-             self.var_link_hubs[k,l] + 
-             self.var_assign_orig_hub[j,l]
-             <=
-             2
-             for (i,k,l,j) in infeasible_combinations
-             ),
-             name = "cut routes taking longer than β"
-        )
+    #     self.model.addConstrs(
+    #         (self.var_assign_orig_hub[i,k] +
+    #          self.var_link_hubs[k,l] + 
+    #          self.var_assign_orig_hub[j,l]
+    #          <=
+    #          2
+    #          for (i,k,l,j) in infeasible_combinations
+    #          ),
+    #          name = "cut routes taking longer than β"
+    #     )
 
     def _add_constraint_eliminate_slowest_node_hub_assignment(self):
         """
@@ -628,7 +601,7 @@ class USApSCT:
         N = self.set_cities
         tt = self.par_travel_time_truck_h        
         beta = self.par_max_arrival_time_h
-        infeasible_combinations = []
+        infeasibleeconomy_scale_factor
         print(f"\nApplying cut: detecting tt_ik > β")
         for i in N:
             for k in N:
@@ -703,7 +676,7 @@ class USApSCT:
                 self.var_flow_orig_hub_hub[i,k,l] * 
                 self.par_distance_km[k,l] * 
                 self.par_unit_cost_per_km_flow * 
-                self.par_hub_to_hub_cost_factor
+                self.par_economy_scale_factor
                 for i in N for k in N for l in N if (k != l) and (l != i)
             ),
             name = "OF_transport_transfer_cost"
@@ -825,8 +798,8 @@ class USApSCT:
         solution['variables']['Y'] = remove_0_values(self.model.getAttr('X', self.var_flow_orig_hub_hub))
         solution['variables']['X'] = remove_0_values(self.model.getAttr('X', self.var_flow_orig_hub_dest))
         solution['variables']['R'] = remove_0_values(self.model.getAttr('X', self.var_link_hubs))
-        solution['variables']['DHH'] = remove_0_values(self.model.getAttr('X', self.var_departure_from_hub_to_hub))
-        solution['variables']['DHD'] = remove_0_values(self.model.getAttr('X', self.var_departure_from_hub_to_dest))
+        solution['variables']['Dh'] = remove_0_values(self.model.getAttr('X', self.var_departure_from_hub_to_hub))
+        solution['variables']['Dc'] = remove_0_values(self.model.getAttr('X', self.var_departure_from_hub_to_dest))
         solution['variables']['A'] = remove_0_values(self.model.getAttr('X', self.var_arrival_to_dest))
 
         utils.save_solution(solution, file_name=self.instance_name)
@@ -852,6 +825,7 @@ class USApSCT:
                 hubs_ids.add(j)
         
         # Now we can plot
+        potential_hubs = self.set_cities - self.heuristic_non_hubs_nodes
         plotter.plot_map(cities_data = self.cities_data,
                          cities_considered = self.set_cities,
                          hubs_ids=hubs_ids,
@@ -859,8 +833,8 @@ class USApSCT:
                          transfer=origin_hub_hub_flow_transfer,
                          distribution=origin_hub_destination_flow_distribution,
                          beta=self.par_max_arrival_time_h,
-                         alpha=self.par_hub_to_hub_cost_factor,
-                         non_hubs_nodes=self.heuristic_non_hubs_nodes,
+                         alpha=self.par_economy_scale_factor,
+                         top_k_cities_for_hub=potential_hubs,
                          size_proportional_to_flow=True,
                          draw_city_names=False
                          )
@@ -870,16 +844,72 @@ class USApSCT:
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApSCT(cities_data, 
-                      max_nodes=40,
-                      number_hubs=None,
-                      max_time_h=30,
-                      hub_to_hub_cost_factor=8, 
-                      min_city_supply_ranking_to_be_hub=20,
-                      min_latitude_to_be_hub=37,
-                      max_latitude_to_be_hub=41.02,
-                      min_longitude_to_be_hub=28,
-                      max_longitude_to_be_hub=40)
+    
+    problem = USAPSCT(cities_data,
+                        max_nodes=20,
+                        max_arrival_time_h=36,
+                        economy_of_scale_factor=0.8, 
+                        top_k_cities_for_hub=20
+                        )
     problem.solve()
     problem.save_solution()
     problem.plot_solution()
+
+    # Experiment 1: change beta
+    # betas = [20, 24, 28, 99] 
+    # for b in betas:
+    #     problem = USAPSCT(cities_data,
+    #                     max_nodes=81,
+    #                     number_hubs=None,
+    #                    top_k_nodes_hubs
+    #                     hub_to_hub_cost_factor=8, 
+    #                     min_city_supply_ranking_to_be_hub=41,
+    #                     min_latitude_to_be_hub=37,
+    #                     max_latitude_to_be_hub=41.02,
+    #                     min_longitude_to_be_hub=28,
+    #                     max_longitude_to_be_hub=41)
+    #     problem.solve()
+    #     problem.save_solution()
+    #     problem.plot_solution()
+    
+    # Experiment 2: change alpha
+    # alphas = [2, 4, 8, 16] 
+    # for a in alphas:
+    #     problem = USAPSCT(cities_data,
+    #                     max_nodes=81,
+    #                     number_hubs=None,
+    #                     max_time_h=24,
+    #                     hub_to_hub_cost_factor=a, 
+    #                     min_city_supply_ranking_to_be_hub=41,
+    #                     min_latitude_to_be_hub=37,
+    #                     max_latitude_to_be_hub=41.02,
+    #                     min_longitude_to_be_hub=28,
+    #                     max_longitude_to_be_hub=41)
+    #     problem.solve()
+    #     problem.save_solution()
+    #     problem.plot_solution()
+    
+    # Experiment 3: look at heuristic effect (need last 2)
+    # params = [
+    #     (60, 38.0, 40.0, 32.0, 40.0),
+    #     (60, 37.5, 40.5, 31.5, 40.5),
+    #     (60, 37.0, 41.0, 31.0, 41.0),
+    #     (60, 36.5, 41.5, 30.5, 41.5),
+    #     (60, 36.0, 42.0, 30.0, 42.0),
+    #     (60, 35.5, 42.0, 29.5, 42.5)
+    # ] 
+    # for p in params:
+    #     min_ranking, min_lat, max_lat, min_long, max_long = p
+    #     problem = USAPSCT(cities_data,
+    #                     max_nodes=81,
+    #                     number_hubs=None,
+    #                     max_time_h=24,
+    #                     hub_to_hub_cost_factor=8, 
+    #                     min_city_supply_ranking_to_be_hub=min_ranking,
+    #                     economy_of_scale_factor=min_lat,
+    #                     max_latitude_to_be_hub=max_lat,
+    #                     min_longitude_to_be_hub=min_long,
+    #                     max_longitude_to_be_hub=max_long)
+    #     problem.solve()
+    #     problem.save_solution()
+    #     problem.plot_solution()

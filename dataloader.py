@@ -57,7 +57,7 @@ def __fill_city_to_city_info(cities: Dict[int, City], sheet_name: str, data_file
                 elif sheet_name == "travel_time_min":
                     cities[origin_id].travel_time_min_to_other_cities[dest_id] = int(value)
                 elif sheet_name == "flow_normalized":
-                    cities[origin_id].flow_goods_to_other_cities[dest_id] = round(value,3)
+                    cities[origin_id].flow_goods_to_other_cities[dest_id] = value
                 elif sheet_name == "fixed_link_cost":
                     cities[origin_id].fixed_link_cost_to_other_cities[dest_id] = value
                 else:

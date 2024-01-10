@@ -34,7 +34,7 @@ def plot_map(cities_data: Dict[int, City],
              distribution: dict(),
              beta: float,
              alpha: float,
-             non_hubs_nodes: set,
+             top_k_cities_for_hub: set,
              size_proportional_to_flow: bool,
              draw_city_names: bool):
     """Plots the map and optionally the solution
@@ -48,18 +48,20 @@ def plot_map(cities_data: Dict[int, City],
         - distribution (dict): distribution flow (i,l,j) -> flow
         - beta (float): max delivery time between origin and destination
         - alpha (float): hub-to-hub cost factor (greater than truck transportation)
-        - non_hubs_nodes (list): heuristic which discarded some nodes to be hubs
+        - top_k_cities_for_hub (list): top k cities to be assigned as potential hubs
         - size_proportional_to_flow (bool): to see the map and the volumes required to transport
         - draw_city_names (bool)
     """
     
+    assert isinstance(top_k_cities_for_hub, set)
+
     # Print map
     world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
     world = world.query("name == 'Turkey'")
     ax = world.plot(color="whitesmoke", edgecolor="black", linewidth=MAP_LINEWIDTH)
     ax.figure.set_size_inches(14,6)
 
-    plt.title(f"N={len(cities_considered)}, β={beta}[h], α={alpha}, Hubs discarded by heuristic={len(non_hubs_nodes)}")
+    plt.title(f"N={len(cities_considered)}, β={beta}[h], α={alpha}, k={top_k_cities_for_hub}")
     plt.ylabel("Latitude")
     plt.xlabel("Longitude")
 
@@ -95,7 +97,7 @@ def plot_map(cities_data: Dict[int, City],
         if size_proportional_to_flow:
             size_ball = _get_size_given_min_max(supply_per_city[i], min_supply, max_supply, min_size=MIN_SIZEBALL, max_size=MAX_SIZEBALL)
         
-        node_color = "blue" if i in hubs_ids else ("red" if i in non_hubs_nodes else "green")
+        node_color = "blue" if i in hubs_ids else ("red" if i in top_k_cities_for_hub else "green")
         plt.scatter(cities_data[i].longitude, 
                     cities_data[i].latitude, 
                     s=size_ball, 
@@ -164,7 +166,7 @@ def plot_map(cities_data: Dict[int, City],
     plot_name = "n" + str(len(cities_considered)).zfill(2) 
     plot_name += "_t" + str(beta).zfill(2) 
     plot_name += "_a" + str(alpha).zfill(2) 
-    plot_name += "_h" + str(len(non_hubs_nodes)).zfill(2)
+    plot_name += "_h" + str(len(top_k_cities_for_hub)).zfill(2)
     
     filepath = os.path.join(FOLDER, plot_name + ".png")
     plt.savefig(filepath)
