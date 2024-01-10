@@ -834,7 +834,8 @@ class USAPSCT:
                          distribution=origin_hub_destination_flow_distribution,
                          beta=self.par_max_arrival_time_h,
                          alpha=self.par_economy_scale_factor,
-                         top_k_cities_for_hub=potential_hubs,
+                         potential_hubs=potential_hubs,
+                         top_k_cities_for_hub=self.top_k_cities_for_hub,
                          size_proportional_to_flow=True,
                          draw_city_names=False
                          )
@@ -846,8 +847,8 @@ if __name__ == "__main__":
     cities_data = load_data()
     
     problem = USAPSCT(cities_data,
-                        max_nodes=20,
-                        max_arrival_time_h=36,
+                        max_nodes=81,
+                        max_arrival_time_h=30,
                         economy_of_scale_factor=0.8, 
                         top_k_cities_for_hub=20
                         )

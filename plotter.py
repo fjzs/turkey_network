@@ -34,7 +34,8 @@ def plot_map(cities_data: Dict[int, City],
              distribution: dict(),
              beta: float,
              alpha: float,
-             top_k_cities_for_hub: set,
+             potential_hubs: set,
+             top_k_cities_for_hub: int,
              size_proportional_to_flow: bool,
              draw_city_names: bool):
     """Plots the map and optionally the solution
@@ -53,7 +54,7 @@ def plot_map(cities_data: Dict[int, City],
         - draw_city_names (bool)
     """
     
-    assert isinstance(top_k_cities_for_hub, set)
+    assert isinstance(potential_hubs, set)
 
     # Print map
     world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
@@ -97,7 +98,7 @@ def plot_map(cities_data: Dict[int, City],
         if size_proportional_to_flow:
             size_ball = _get_size_given_min_max(supply_per_city[i], min_supply, max_supply, min_size=MIN_SIZEBALL, max_size=MAX_SIZEBALL)
         
-        node_color = "blue" if i in hubs_ids else ("red" if i in top_k_cities_for_hub else "green")
+        node_color = "blue" if i in hubs_ids else ("green" if i in potential_hubs else "red")
         plt.scatter(cities_data[i].longitude, 
                     cities_data[i].latitude, 
                     s=size_ball, 
@@ -166,7 +167,7 @@ def plot_map(cities_data: Dict[int, City],
     plot_name = "n" + str(len(cities_considered)).zfill(2) 
     plot_name += "_t" + str(beta).zfill(2) 
     plot_name += "_a" + str(alpha).zfill(2) 
-    plot_name += "_h" + str(len(top_k_cities_for_hub)).zfill(2)
+    plot_name += "_k" + str(top_k_cities_for_hub).zfill(2)
     
     filepath = os.path.join(FOLDER, plot_name + ".png")
     plt.savefig(filepath)
