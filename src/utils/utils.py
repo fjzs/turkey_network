@@ -3,7 +3,7 @@ import json
 import os
 
 
-FOLDER = "./solutions/"
+FOLDER = "./../solutions/"
 
 def save_solution(data: dict, file_name: str) -> None:
     """Saves the dict as a json file
@@ -24,16 +24,15 @@ def load_solution(file_name: str) -> dict:
         data = json.load(f)
     
     # Remap variables keys to tuple
-    converted_data = {key: __convert_to_tuple__(value) for key, value in data['variables'].items()}
+    converted_data = {key: _convert_to_tuple(value) for key, value in data['variables'].items()}
     data["variables"] = converted_data
     
     return data
 
 
 # Function to convert string representation of tuple to actual tuple
-def __convert_to_tuple__(dictionary):
-    return {ast.literal_eval(key): value for key, value in dictionary.items()}    
-
+def _convert_to_tuple(dictionary):
+    return {ast.literal_eval(key): value for key, value in dictionary.items()}
 
 
 if __name__ == "__main__":

@@ -175,7 +175,7 @@ def plot_map(cities_data: Dict[int, City],
     
 
 if __name__ == "__main__":
-    from dataloader import load_data
+    from src.dataloader.dataloader import load_data
     cities_data = load_data()
     plot_map(cities_data,
              cities_considered=None,

@@ -1,11 +1,12 @@
-from typing import Dict
-from class_city import City
 import gurobipy as gp
 from gurobipy import GRB
-import plotter
+from problem_data import ProblemData
+from typing import Dict
 import utils
 
-class USAPSCT:
+
+
+class USAPSCT(BaseModel):
     """This class implements the uncapacitated, single allocation p-hub set covering with
     time service constraints, a mixture between:
     - Ernst, A.T., Krishnamoorthy, M. (1996)
@@ -18,7 +19,8 @@ class USAPSCT:
     ingle allocation p-hub median problem”. Location Science 4(3): 139-154.
     """
 
-    def __init__(self, cities_data: Dict[int, City], 
+    def __init__(self, 
+                 problem_data: ProblemData, 
                  max_nodes:int = 81, 
                  max_arrival_time_h:int = 30,
                  economy_of_scale_factor:float = 0.9,
@@ -30,7 +32,7 @@ class USAPSCT:
                  ):
         assert 2 <= max_nodes <= 81
         assert 1 <= max_arrival_time_h
-        self.cities_data = cities_data
+        self.cities_data = problem_data.cities
         
         # TODO:
         # Done: Eliminate infeasible combinations de i -> k -> l -> j because travel time is violated
@@ -813,74 +815,12 @@ class USAPSCT:
 
 
 if __name__ == "__main__":
-    from dataloader import load_data
-    cities_data = load_data()
     
-    problem = USAPSCT(cities_data,
-                      max_nodes=81,
-                      max_arrival_time_h=29,
+    problem = USAPSCT(ProblemData(),
+                      max_nodes=20,
+                      max_arrival_time_h=35,
                       economy_of_scale_factor=0.8,
-                      top_k_cities_for_hub=20
-                      )
+                      top_k_cities_for_hub=20)
     problem.solve()
     problem.save_solution()
     problem.plot_solution()
-
-    # Experiment 1: change beta
-    # betas = [20, 24, 28, 99] 
-    # for b in betas:
-    #     problem = USAPSCT(cities_data,
-    #                     max_nodes=81,
-    #                     number_hubs=None,
-    #                    top_k_nodes_hubs
-    #                     hub_to_hub_cost_factor=8, 
-    #                     min_city_supply_ranking_to_be_hub=41,
-    #                     min_latitude_to_be_hub=37,
-    #                     max_latitude_to_be_hub=41.02,
-    #                     min_longitude_to_be_hub=28,
-    #                     max_longitude_to_be_hub=41)
-    #     problem.solve()
-    #     problem.save_solution()
-    #     problem.plot_solution()
-    
-    # Experiment 2: change alpha
-    # alphas = [2, 4, 8, 16] 
-    # for a in alphas:
-    #     problem = USAPSCT(cities_data,
-    #                     max_nodes=81,
-    #                     number_hubs=None,
-    #                     max_time_h=24,
-    #                     hub_to_hub_cost_factor=a, 
-    #                     min_city_supply_ranking_to_be_hub=41,
-    #                     min_latitude_to_be_hub=37,
-    #                     max_latitude_to_be_hub=41.02,
-    #                     min_longitude_to_be_hub=28,
-    #                     max_longitude_to_be_hub=41)
-    #     problem.solve()
-    #     problem.save_solution()
-    #     problem.plot_solution()
-    
-    # Experiment 3: look at heuristic effect (need last 2)
-    # params = [
-    #     (60, 38.0, 40.0, 32.0, 40.0),
-    #     (60, 37.5, 40.5, 31.5, 40.5),
-    #     (60, 37.0, 41.0, 31.0, 41.0),
-    #     (60, 36.5, 41.5, 30.5, 41.5),
-    #     (60, 36.0, 42.0, 30.0, 42.0),
-    #     (60, 35.5, 42.0, 29.5, 42.5)
-    # ] 
-    # for p in params:
-    #     min_ranking, min_lat, max_lat, min_long, max_long = p
-    #     problem = USAPSCT(cities_data,
-    #                     max_nodes=81,
-    #                     number_hubs=None,
-    #                     max_time_h=24,
-    #                     hub_to_hub_cost_factor=8, 
-    #                     min_city_supply_ranking_to_be_hub=min_ranking,
-    #                     economy_of_scale_factor=min_lat,
-    #                     max_latitude_to_be_hub=max_lat,
-    #                     min_longitude_to_be_hub=min_long,
-    #                     max_longitude_to_be_hub=max_long)
-    #     problem.solve()
-    #     problem.save_solution()
-    #     problem.plot_solution()

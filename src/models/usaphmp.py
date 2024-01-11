@@ -1,12 +1,10 @@
 from typing import Dict
-from class_city import City
 import gurobipy as gp
 from gurobipy import GRB
-import plotter
 import utils
 
 
-class USAPHMP:
+class USAPHMP(BaseModel):
     """This class implements the uncapacitated, single allocation p-hub median problem from
     ANDREAS T. ERNST and MOHAN KRISHNAMOORTHY (1996)
     """
@@ -223,11 +221,11 @@ class USAPHMP:
 
 
 
-if __name__ == "__main__":
-    from dataloader import load_data
-    cities_data = load_data()
-    problem = USAPHMP(cities_data, max_nodes=50, number_hubs=10)
-    #problem.solve()
-    #problem.save_solution()
-    problem.plot_solution("usaphmp_2023_12_27_05_07_07.json")
+# if __name__ == "__main__":
+#     from src.dataloader.dataloader import load_data
+#     cities_data = load_data()
+#     problem = USAPHMP(cities_data, max_nodes=50, number_hubs=10)
+#     #problem.solve()
+#     #problem.save_solution()
+#     problem.plot_solution("usaphmp_2023_12_27_05_07_07.json")
 
