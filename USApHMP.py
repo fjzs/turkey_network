@@ -226,7 +226,7 @@ class USAPHMP:
 if __name__ == "__main__":
     from dataloader import load_data
     cities_data = load_data()
-    problem = USApHMP(cities_data, max_nodes=50, number_hubs=10)
+    problem = USAPHMP(cities_data, max_nodes=50, number_hubs=10)
     #problem.solve()
     #problem.save_solution()
     problem.plot_solution("usaphmp_2023_12_27_05_07_07.json")

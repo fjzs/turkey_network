@@ -97,10 +97,6 @@ class USAPSCT:
         # Heuristics for solving big instances
         self._add_contraint_heuristic_non_hubs()
 
-        # Apply cuts (not working yet)
-        #self._add_constraint_eliminate_slowest_combinations()
-        #self._add_constraint_eliminate_slowest_node_hub_assignment()
-
         # Set objective function
         # Variables for objective function (var_OF_)
         self.var_OF_location_cost = self._add_var_OF_location_cost()
@@ -589,33 +585,7 @@ class USAPSCT:
     #          name = "cut routes taking longer than β"
     #     )
 
-    def _add_constraint_eliminate_slowest_node_hub_assignment(self):
-        """
-        There are some combinations of Z_ik that are infeasible because
-        tt_ik > β.
-
-        * if tt_ik > β
-        * then: Z_ik = 0
-        * Ɐ i ∈ N, Ɐ k ∈ N: i != k
-        """
-        N = self.set_cities
-        tt = self.par_travel_time_truck_h        
-        beta = self.par_max_arrival_time_h
-        infeasibleeconomy_scale_factor
-        print(f"\nApplying cut: detecting tt_ik > β")
-        for i in N:
-            for k in N:
-                if (i != k) and (tt[i,k] > beta):
-                    infeasible_combinations.append((i,k))
-                    print(f"\ttt_ik {i,k} = {tt[i,k]} > {beta}")
-        print(f"\tTotal number of this cut: {len(infeasible_combinations)}")
-
-        self.model.addConstrs(
-            (self.var_assign_orig_hub[i,k] == 0
-             for (i,k) in infeasible_combinations
-             ),
-             name = "cut node to hub assignment taking longer than β"
-        )
+    
 
 
 
