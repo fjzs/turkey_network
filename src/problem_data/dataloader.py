@@ -2,7 +2,7 @@ from src.problem_data.city import City
 import pandas as pd
 from typing import Dict
 
-DATA_FILE = "./data/data.xlsx"
+DATA_FILE = "src/data/data.xlsx"
 
 
 def _get_cities(data_file:str = DATA_FILE):
@@ -77,5 +77,8 @@ def load_data() -> Dict[int, City]:
 
 
 if __name__ == "__main__":
-    load_data()
+    print("Reading data...")
+    cities = load_data()
+    print(f"I read {len(cities)} cities")
+    
     

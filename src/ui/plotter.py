@@ -1,9 +1,8 @@
-from class_city import City
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import os
 from typing import Dict
-from utils import FOLDER
+from src.utils.utils import FOLDER_SOLUTIONS
 
 MIN_LINEWIDTH = 0.5
 MAX_LINEWIDTH = 4
@@ -26,7 +25,7 @@ def _get_size_given_min_max(x, min_x, max_x, min_size, max_size) -> float:
     """
     return  min_size + ((x - min_x)/(max_x - min_x + 0.01)) * (max_size - min_size)
 
-def plot_map(cities_data: Dict[int, City],
+def plot_map(cities_data: dict(),
              cities_considered: list, 
              hubs_ids: set(), 
              collection: dict(), 
@@ -82,17 +81,6 @@ def plot_map(cities_data: Dict[int, City],
     # Plot the cities numbers
     for i in cities_to_plot:
         city = cities_data[i]
-        
-        # Plotting a solution
-        # if hubs_ids is not None:
-        #     plt.annotate(str(i), (city.longitude-0.1, city.latitude-0.1), color="white", size=10, zorder=100)
-        #     if i in hubs_ids:
-        #         plt.scatter(cities_data[i].longitude, cities_data[i].latitude, s=150, marker='s', color='blue', zorder=80)
-        #     else:
-        #         node_color = "red" if i in non_hubs_nodes else "green"
-        #         plt.scatter(cities_data[i].longitude + 0.05, cities_data[i].latitude, s=160, marker="o", color=node_color, zorder=80)
-        
-        # Plotting proportional to volume per node
         
         size_ball = 100
         if size_proportional_to_flow:
@@ -169,22 +157,6 @@ def plot_map(cities_data: Dict[int, City],
     plot_name += "_a" + str(alpha).zfill(2) 
     plot_name += "_k" + str(top_k_cities_for_hub).zfill(2)
     
-    filepath = os.path.join(FOLDER, plot_name + ".png")
+    filepath = os.path.join(FOLDER_SOLUTIONS, plot_name + ".png")
     plt.savefig(filepath)
     print(f"\nPlot saved in {filepath}")
-    
-
-if __name__ == "__main__":
-    from src.dataloader.dataloader import load_data
-    cities_data = load_data()
-    plot_map(cities_data,
-             cities_considered=None,
-             hubs_ids=None,
-             collection=None,
-             transfer=None,
-             distribution=None,
-             plot_name="test",
-             size_proportional_to_flow=True)
-
-
-

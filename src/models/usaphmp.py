@@ -1,6 +1,8 @@
 from typing import Dict
+
 import gurobipy as gp
 from gurobipy import GRB
+
 import utils
 
 
